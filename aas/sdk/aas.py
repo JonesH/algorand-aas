@@ -10,9 +10,11 @@ from algosdk.v2client import algod
 from algosdk import encoding, transaction
 from algosdk.atomic_transaction_composer import AccountTransactionSigner
 from beaker.client import ApplicationClient
+import base64
+import hashlib
 
 from aas.contracts.aas import AASApplication, get_app
-from aas.sdk.hashing import generate_schema_id, generate_claim_hash, generate_attestation_id
+from aas.sdk.hashing import generate_schema_id, generate_claim_hash
 from aas.sdk.models import Attestation, AttestationStatus
 
 
@@ -71,9 +73,8 @@ class AASClient:
     def _submit_schema_creation(self, schema_id: str, owner_addr: str, uri: str, flags: int) -> str:
         """Submit schema creation transaction."""
         client = self._create_application_client()
-        
-        schema_id_bytes = schema_id.encode('utf-8')
-        box_key = b"schema:" + schema_id_bytes
+        schema_id_bytes = self._schema_id_to_bytes(schema_id)
+        box_key = self._create_schema_box_key(schema_id)
         
         result = client.call(
             AASApplication.create_schema,
@@ -83,7 +84,6 @@ class AASClient:
             flags=flags,
             boxes=[(client.app_id, box_key)],
         )
-        
         transaction.wait_for_confirmation(self.algod_client, result.tx_id, 2)
         return schema_id
     
@@ -99,20 +99,16 @@ class AASClient:
     def _submit_attester_grant(self, schema_id: str, attester_pk: str) -> bool:
         """Submit attester grant transaction."""
         client = self._create_application_client()
-        
-        schema_id_bytes = schema_id.encode('utf-8')
+        schema_id_bytes = self._schema_id_to_bytes(schema_id)
         attester_pk_bytes = bytes.fromhex(attester_pk)
-        
-        schema_box = (client.app_id, b"schema:" + schema_id_bytes)
-        att_box = (client.app_id, b"attesters:" + schema_id_bytes)
+        boxes = self._create_attester_boxes(schema_id)
         
         result = client.call(
             AASApplication.grant_attester,
             schema_id=schema_id_bytes,
             attester_pk=attester_pk_bytes,
-            boxes=[schema_box, att_box],
+            boxes=boxes,
         )
-        
         transaction.wait_for_confirmation(self.algod_client, result.tx_id, 2)
         return True
     
@@ -120,28 +116,23 @@ class AASClient:
         """Create attestation and return attestation ID."""
         if not self.app_id:
             raise ValueError("App ID not set")
+        if not self.signer or not self.sender:
+            raise ValueError("Signer not set. Call set_signer() first.")
         
         claim_hash = generate_claim_hash(claim_data)
-        attestation_id = generate_attestation_id(schema_id, subject_addr, claim_hash, nonce)
+        # Compute on-chain attestation ID (sha256 over raw bytes message)
+        attestation_id = self._compute_onchain_att_id_hex(schema_id, subject_addr, claim_hash, nonce)
         
-        self._submit_attestation(schema_id, subject_addr, claim_hash, nonce, signature, attester_pk, cid)
+        self._submit_attestation(schema_id, subject_addr, claim_hash, nonce, signature, attester_pk, cid, attestation_id)
         return attestation_id
     
-    def _submit_attestation(self, schema_id: str, subject_addr: str, claim_hash: str, nonce: str, signature: str, attester_pk: str, cid: str) -> None:
+    def _submit_attestation(self, schema_id: str, subject_addr: str, claim_hash: str, nonce: str, signature: str, attester_pk: str, cid: str, attestation_id_hex: str) -> None:
         """Submit attestation transaction."""
         client = self._create_application_client()
-        
-        schema_id_bytes = schema_id.encode('utf-8')
-        claim_hash_bytes = bytes.fromhex(claim_hash)
-        nonce_bytes = bytes.fromhex(nonce)
-        signature_bytes = bytes.fromhex(signature)
-        attester_pk_bytes = bytes.fromhex(attester_pk)
-        
-        att_id = generate_attestation_id(schema_id, subject_addr, claim_hash, nonce)
-        
-        schema_box = (client.app_id, b"schema:" + schema_id_bytes)
-        att_box = (client.app_id, b"attesters:" + schema_id_bytes)
-        att_storage_box = (client.app_id, b"att:" + att_id.encode('utf-8'))
+        schema_id_bytes, claim_hash_bytes, nonce_bytes, signature_bytes, attester_pk_bytes = self._prepare_attestation_params(
+            schema_id, claim_hash, nonce, signature, attester_pk
+        )
+        boxes = self._create_attestation_boxes(schema_id, attestation_id_hex)
         
         result = client.call(
             AASApplication.attest,
@@ -152,9 +143,8 @@ class AASClient:
             sig_64=signature_bytes,
             cid=cid,
             attester_pk=attester_pk_bytes,
-            boxes=[schema_box, att_box, att_storage_box],
+            boxes=boxes,
         )
-        
         transaction.wait_for_confirmation(self.algod_client, result.tx_id, 2)
     
     def revoke(self, attestation_id: str, reason: int = 0) -> bool:
@@ -169,9 +159,8 @@ class AASClient:
     def _submit_revocation(self, attestation_id: str, reason: int) -> bool:
         """Submit revocation transaction."""
         client = self._create_application_client()
-        
-        att_id_bytes = attestation_id.encode('utf-8')
-        att_storage_box = (client.app_id, b"att:" + att_id_bytes)
+        att_id_bytes = bytes.fromhex(attestation_id)
+        att_storage_box = self._create_revocation_box(attestation_id)
         
         result = client.call(
             AASApplication.revoke,
@@ -179,7 +168,6 @@ class AASClient:
             reason=reason,
             boxes=[att_storage_box],
         )
-        
         transaction.wait_for_confirmation(self.algod_client, result.tx_id, 2)
         return True
     
@@ -197,10 +185,16 @@ class AASClient:
         try:
             if self.app_id is None:
                 return None
-            box_name = f"att:{attestation_id}".encode('utf-8')
+            box_name = b"att:" + bytes.fromhex(attestation_id)
             box_response = self.algod_client.application_box_by_name(self.app_id, box_name)
             if isinstance(box_response, dict) and 'value' in box_response:
-                return self._parse_attestation_box(box_response['value'], attestation_id)
+                raw: bytes
+                val = box_response['value']
+                if isinstance(val, str):
+                    raw = base64.b64decode(val)
+                else:
+                    raw = val
+                return self._parse_attestation_box(raw, attestation_id)
             return None
         except Exception:
             return None
@@ -210,21 +204,95 @@ class AASClient:
         if len(box_data) < 41:  # Minimum: status(1) + subject(32) + schema_id_len(8)
             raise ValueError("Invalid attestation box data")
         
-        status_byte = box_data[0:1].decode('utf-8')
-        status = AttestationStatus.OK if status_byte == 'A' else AttestationStatus.REVOKED
-        
+        status = self._parse_attestation_status(box_data)
         subject = encoding.encode_address(box_data[1:33])
-        schema_id_len = int.from_bytes(box_data[33:41], 'big')
-        schema_id = box_data[41:41+schema_id_len].decode('utf-8')
-        cid = box_data[41+schema_id_len:].decode('utf-8') if len(box_data) > 41+schema_id_len else ""
+        schema_id, cid = self._parse_schema_and_cid(box_data)
         
         return Attestation(
-            id=attestation_id,
-            schema_id=schema_id,
-            subject=subject,
-            claim_hash="",  # Not stored in box
-            nonce="",  # Not stored in box  
-            signature="",  # Not stored in box
-            status=status,
-            cid=cid
+            id=attestation_id, schema_id=schema_id, subject=subject,
+            claim_hash="", nonce="", signature="", status=status, cid=cid
         )
+
+    # --- Internal helpers ---
+    def _create_schema_box_key(self, schema_id: str) -> bytes:
+        """Create schema box key from schema ID."""
+        schema_id_bytes = self._schema_id_to_bytes(schema_id)
+        return b"schema:" + schema_id_bytes
+    
+    def _create_attester_boxes(self, schema_id: str) -> list[tuple[int, bytes]]:
+        """Create box references for attester operations."""
+        if self.app_id is None:
+            raise ValueError("App ID not set")
+        schema_id_bytes = self._schema_id_to_bytes(schema_id)
+        schema_box = b"schema:" + schema_id_bytes
+        att_box = b"attesters:" + schema_id_bytes
+        return [(self.app_id, schema_box), (self.app_id, att_box)]
+    
+    def _prepare_attestation_params(self, schema_id: str, claim_hash: str, nonce: str, signature: str, attester_pk: str) -> tuple[bytes, bytes, bytes, bytes, bytes]:
+        """Prepare attestation parameters for blockchain submission."""
+        schema_id_bytes = self._schema_id_to_bytes(schema_id)
+        claim_hash_bytes = bytes.fromhex(claim_hash)
+        nonce_bytes = bytes.fromhex(nonce)
+        signature_bytes = bytes.fromhex(signature)
+        attester_pk_bytes = bytes.fromhex(attester_pk)
+        return schema_id_bytes, claim_hash_bytes, nonce_bytes, signature_bytes, attester_pk_bytes
+    
+    def _create_attestation_boxes(self, schema_id: str, attestation_id_hex: str) -> list[tuple[int, bytes]]:
+        """Create box references for attestation operations."""
+        if self.app_id is None:
+            raise ValueError("App ID not set")
+        schema_id_bytes = self._schema_id_to_bytes(schema_id)
+        att_id_bytes = bytes.fromhex(attestation_id_hex)
+        schema_box = b"schema:" + schema_id_bytes
+        att_box = b"attesters:" + schema_id_bytes
+        att_storage_box = b"att:" + att_id_bytes
+        return [(self.app_id, schema_box), (self.app_id, att_box), (self.app_id, att_storage_box)]
+    
+    def _create_revocation_box(self, attestation_id: str) -> tuple[int, bytes]:
+        """Create box reference for revocation operations."""
+        if self.app_id is None:
+            raise ValueError("App ID not set")
+        att_id_bytes = bytes.fromhex(attestation_id)
+        return (self.app_id, b"att:" + att_id_bytes)
+    
+    def _parse_attestation_status(self, box_data: bytes) -> AttestationStatus:
+        """Parse attestation status from box data."""
+        status_byte = box_data[0:1].decode('utf-8')
+        return AttestationStatus.OK if status_byte == 'A' else AttestationStatus.REVOKED
+    
+    def _parse_schema_and_cid(self, box_data: bytes) -> tuple[str, str]:
+        """Parse schema ID and CID from box data."""
+        schema_id_len = int.from_bytes(box_data[33:41], 'big')
+        schema_id_bytes = box_data[41:41+schema_id_len]
+        try:
+            schema_id = schema_id_bytes.decode('utf-8')
+        except Exception:
+            # Fallback: represent as hex when schema_id is not valid UTF-8 (e.g., 32 raw bytes)
+            schema_id = schema_id_bytes.hex()
+        cid = box_data[41+schema_id_len:].decode('utf-8') if len(box_data) > 41+schema_id_len else ""
+        return schema_id, cid
+    
+    def _schema_id_to_bytes(self, schema_id: str) -> bytes:
+        """Convert schema ID string to bytes for on-chain usage.
+
+        If `schema_id` looks like a 64-character hex string, interpret it as hex (32 bytes).
+        Otherwise, return UTF-8 bytes (supports short IDs used in tests).
+        """
+        try:
+            if len(schema_id) == 64:
+                return bytes.fromhex(schema_id)
+        except ValueError:
+            pass
+        return schema_id.encode('utf-8')
+
+    def _compute_onchain_att_id_hex(self, schema_id: str, subject_addr: str, claim_hash: str, nonce: str) -> str:
+        """Compute on-chain attestation ID as hex string.
+
+        sha256(schema_id_bytes + subject_addr_bytes + claim_hash_bytes + nonce_bytes).
+        """
+        schema_id_bytes = self._schema_id_to_bytes(schema_id)
+        subject_bytes = encoding.decode_address(subject_addr)
+        claim_hash_bytes = bytes.fromhex(claim_hash)
+        nonce_bytes = bytes.fromhex(nonce)
+        att_id_bytes = hashlib.sha256(schema_id_bytes + subject_bytes + claim_hash_bytes + nonce_bytes).digest()
+        return att_id_bytes.hex()
