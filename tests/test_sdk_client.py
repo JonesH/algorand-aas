@@ -52,9 +52,9 @@ def test_create_schema_validation() -> None:
     with pytest.raises(ValueError, match="App ID not set"):
         client.create_schema({"type": "object"}, "owner_addr", "uri")
     
-    # Should fail with NotImplementedError (transaction submission not implemented)
+    # Should fail without signer set
     client.set_app_id(123)
-    with pytest.raises(NotImplementedError, match="Real blockchain transaction submission not yet implemented"):
+    with pytest.raises(ValueError, match="Signer not set"):
         client.create_schema({"type": "object"}, "owner_addr", "uri")
 
 
@@ -75,8 +75,8 @@ def test_grant_attester_validation() -> None:
     with pytest.raises(ValueError, match="Schema ID and attester public key required"):
         client.grant_attester("schema_id", "")
     
-    # Should fail with NotImplementedError (transaction submission not implemented)
-    with pytest.raises(NotImplementedError, match="Real blockchain transaction submission not yet implemented"):
+    # Should fail without signer set
+    with pytest.raises(ValueError, match="Signer not set"):
         client.grant_attester("schema_id", "attester_pk")
 
 
@@ -88,9 +88,9 @@ def test_attest_validation() -> None:
     with pytest.raises(ValueError, match="App ID not set"):
         client.attest("schema_id", "subject", {"data": "test"}, "nonce", "sig", "pk")
     
-    # Should fail with NotImplementedError (transaction submission not implemented)
+    # Should fail without signer set
     client.set_app_id(123)
-    with pytest.raises(NotImplementedError, match="Real blockchain transaction submission not yet implemented"):
+    with pytest.raises(ValueError, match="Signer not set"):
         client.attest("schema_id", "subject", {"data": "test"}, "nonce", "sig", "pk")
 
 
@@ -108,8 +108,8 @@ def test_revoke_validation() -> None:
     with pytest.raises(ValueError, match="Attestation ID required"):
         client.revoke("")
     
-    # Should fail with NotImplementedError (transaction submission not implemented)
-    with pytest.raises(NotImplementedError, match="Real blockchain transaction submission not yet implemented"):
+    # Should fail without signer set
+    with pytest.raises(ValueError, match="Signer not set"):
         client.revoke("att_id")
 
 

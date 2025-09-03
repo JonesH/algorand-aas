@@ -6,7 +6,7 @@ A minimal, production-grade Algorand Attestation Service inspired by EAS: a Sche
 
 - **Schema Registry**: Create and manage attestation schemas
 - **Attestation Writing**: Create, verify, and revoke attestations
-- **Ed25519 Signatures**: Cryptographic verification of attestations  
+- **Ed25519 Signatures**: Cryptographic verification of attestations
 - **Minimal On-chain PII**: Only hashes and addresses stored on-chain
 - **Type-safe SDK**: Pydantic models with full type safety
 - **CLI Interface**: Rich command-line interface with Typer
@@ -26,6 +26,11 @@ uv pip install -e .
 
 # Install with development dependencies
 uv pip install -e .[dev]
+
+# Install pre-commit if not installed yet (pipx is recommended for global installation of python cli tools)
+pipx install pre-commit
+# Install pre-commit hooks for code quality
+pre-commit install
 ```
 
 ### Development Setup
@@ -45,7 +50,7 @@ uv run pytest
 # Run only unit tests (skip LocalNet)
 uv run pytest -m "not localnet"
 
-# Run only LocalNet integration tests  
+# Run only LocalNet integration tests
 uv run pytest -m localnet
 
 # Run type checking
@@ -83,12 +88,10 @@ aas revoke attestation_id_here --reason 42
 aas get attestation_id_here
 ```
 
-> **Note**: CLI commands currently perform validation and argument parsing but do not submit real blockchain transactions. Transaction submission will be implemented in a future version. For actual blockchain operations, use the LocalNet integration tests (`pytest -m localnet`).
-
 ## Architecture
 
 ### Smart Contract (PyTeal + Beaker)
-- `create_schema(schema_id, owner, uri, flags)`: Register new schema ✅ 
+- `create_schema(schema_id, owner, uri, flags)`: Register new schema ✅
 - `grant_attester(schema_id, attester_pk)`: Grant attestation permissions ✅
 - `attest(schema_id, subject_addr, claim_hash_32, nonce_32, sig_64, cid, attester_pk)`: Create attestation with ed25519 signature verification ✅
 - `revoke(att_id, reason)`: Revoke existing attestation ✅
@@ -112,7 +115,7 @@ Deterministic: `attestation_id = sha256(schema_id + subject_addr + claim_hash + 
 This project follows TDD (Test-Driven Development):
 
 1. Write failing tests first
-2. Implement minimal code to make tests pass  
+2. Implement minimal code to make tests pass
 3. Ensure all tests green before moving to next step
 4. Commit only when tests pass
 
@@ -122,22 +125,22 @@ This project follows TDD (Test-Driven Development):
 aas/
   contracts/aas.py          # Beaker Router with PyTeal smart contract
   sdk/
-     aas.py                # Core SDK client (interface complete, transaction submission pending)
-     models.py             # Pydantic models for type safety  
+     aas.py                # Core SDK client with real blockchain transaction submission
+     models.py             # Pydantic models for type safety
      hashing.py            # Crypto utilities (JSON hashing, ed25519)
   cli/
-     main.py               # Typer CLI with all commands (pending real transaction submission)
+     main.py               # Typer CLI with full blockchain transaction support
   scripts/
-     deploy.py             # Deployment script (TODO: implement)
+     deploy.py             # Deployment script for LocalNet/TestNet/MainNet
 tests/
   test_contract_compile.py  # Contract compilation tests
-  test_sdk_hashing.py       # SDK hashing and crypto tests  
+  test_sdk_hashing.py       # SDK hashing and crypto tests
   test_flow_localnet.py     # LocalNet integration tests
 ```
 
 ## Implementation Status
 
-**✅ Steps 1-5 Complete**: Core attestation functionality with Python SDK implemented
+**✅ Steps 1-6 Complete**: Full attestation service with blockchain transaction support implemented
 
 ### Step 1: Schema Registry ✅
 - [x] `create_schema` contract method with box storage
@@ -145,7 +148,7 @@ tests/
 - [x] Owner-only schema management
 - [x] Comprehensive LocalNet integration tests
 
-### Step 2: Attester Management ✅  
+### Step 2: Attester Management ✅
 - [x] `grant_attester` contract method with owner validation
 - [x] Idempotent attester storage in concatenated format
 - [x] 32-byte ed25519 public key validation
@@ -182,14 +185,15 @@ tests/
 - [x] revoke command (attestation ID + optional reason)
 - [x] get command (attestation lookup by ID)
 - [x] Comprehensive CLI tests (argument parsing, validation, mocking)
-- [x] Explicit error handling for unimplemented blockchain transaction submission
+- [x] Real blockchain transaction submission with ApplicationClient integration
+- [x] Deployment script for LocalNet/TestNet/MainNet environments
 
 ## Test Results
 ```
 ======================== 73 passed, 1 skipped in 34.99s ========================
 ```
 
-**Current Focus**: Step 6 complete! All core functionality implemented with comprehensive CLI interface
+**Current Focus**: All 6 steps complete! Production-ready AAS with full blockchain transaction support, deployment script, and comprehensive CLI interface
 
 ## License
 

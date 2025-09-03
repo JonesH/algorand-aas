@@ -65,6 +65,7 @@ def create_schema(
         signer, owner_addr = create_signer(config)
         
         client = AASClient(algod_client, config.app_id)
+        client.set_signer(signer, owner_addr)
         result_schema_id = client.create_schema(schema_data, owner_addr, uri, flags)
         
         console.print("✅ Schema created successfully!")
@@ -107,6 +108,7 @@ def grant_attester(
         signer, owner_addr = create_signer(config)
         
         client = AASClient(algod_client, config.app_id)
+        client.set_signer(signer, owner_addr)
         success = client.grant_attester(schema_id, attester_pk)
         
         if success:
@@ -151,9 +153,10 @@ def attest(
         claim_data = _load_claim_file(claim_file)
         
         algod_client = create_algod_client(config)
-        signer, _ = create_signer(config)
+        signer, sender_addr = create_signer(config)
         
         client = AASClient(algod_client, config.app_id)
+        client.set_signer(signer, sender_addr)
         att_id = client.attest(schema_id, subject_addr, claim_data, nonce, signature, attester_pk, cid)
         
         console.print("✅ Attestation created successfully!")
@@ -206,9 +209,10 @@ def revoke(
         validate_config(config)
         
         algod_client = create_algod_client(config)
-        signer, _ = create_signer(config)
+        signer, sender_addr = create_signer(config)
         
         client = AASClient(algod_client, config.app_id)
+        client.set_signer(signer, sender_addr)
         success = client.revoke(attestation_id, reason)
         
         if success:
