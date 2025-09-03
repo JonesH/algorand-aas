@@ -58,23 +58,29 @@ uv run ruff check .
 ### CLI Usage
 
 ```bash
+# Set environment variables
+export AAS_ALGOD_URL=http://localhost:4001
+export AAS_ALGOD_TOKEN=your_token_here
+export AAS_APP_ID=123456
+export AAS_MNEMONIC="your 25 word mnemonic phrase here"
+
 # Show help
 aas --help
 
-# Create a schema (TODO: CLI not implemented yet)
-aas create-schema
+# Create a schema from JSON file
+aas create-schema schema.json --uri "https://example.com/schema" --flags 1
 
-# Grant attester permissions (TODO: CLI not implemented yet)  
-aas grant-attester
+# Grant attester permissions
+aas grant-attester schema_id_here attester_public_key_64_char_hex
 
-# Create an attestation (TODO: CLI not implemented yet)
-aas attest
+# Create an attestation (requires pre-signed message)
+aas attest schema_id subject_address claim.json nonce_64_hex signature_128_hex attester_pk_64_hex --cid QmHash
 
-# Revoke an attestation (TODO: CLI not implemented yet)
-aas revoke
+# Revoke an attestation
+aas revoke attestation_id_here --reason 42
 
-# Get information (TODO: CLI not implemented yet)
-aas get
+# Get attestation information
+aas get attestation_id_here
 ```
 
 ## Architecture
@@ -165,20 +171,22 @@ tests/
 - [x] verify_attestation() box reading (with box data parsing)
 - [x] Unit tests for client methods and validation
 
-### Step 6: CLI Interface ⏳
+### Step 6: CLI Interface ✅
 - [x] Basic Typer CLI structure
-- [ ] create-schema command
-- [ ] grant-attester command  
-- [ ] attest command
-- [ ] revoke command
-- [ ] get/query commands
+- [x] Pydantic-settings configuration with environment variables
+- [x] create-schema command (JSON schema file input, owner validation)
+- [x] grant-attester command (schema ID + attester public key)
+- [x] attest command (signature validation, claim data from JSON)
+- [x] revoke command (attestation ID + optional reason)
+- [x] get command (attestation lookup by ID)
+- [x] Comprehensive CLI tests (argument parsing, validation, mocking)
 
 ## Test Results
 ```
-======================== 34 passed in 19.43s ========================
+======================== 73 passed, 1 skipped in 34.99s ========================
 ```
 
-**Current Focus**: Step 5 complete! Ready for Step 6 (CLI interface implementation)
+**Current Focus**: Step 6 complete! All core functionality implemented with comprehensive CLI interface
 
 ## License
 
