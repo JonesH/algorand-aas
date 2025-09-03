@@ -203,12 +203,12 @@ def test_create_schema_success(
 
 
 @pytest.mark.localnet
-def test_create_schema_duplicate_fails(
+def test_create_schema_duplicate_currently_allowed(
     deployed_client: ApplicationClient,
     algod_client: AlgodClient,
     localnet_signer: tuple[AccountTransactionSigner, str],
 ) -> None:
-    """Test that creating duplicate schema fails."""
+    """Test that creating duplicate schema currently succeeds (duplicate prevention not yet implemented)."""
 
     # Test data
     schema_id = b"duplicate_test"
@@ -230,7 +230,7 @@ def test_create_schema_duplicate_fails(
     )
 
     # Second creation should succeed for now (no duplicate check yet)
-    # TODO: Add duplicate prevention logic
+    # TODO: Add duplicate prevention logic - this test should be updated to expect failure once implemented
     deployed_client.call(
         AASApplication.create_schema,
         schema_id=schema_id,
@@ -426,89 +426,38 @@ def test_attest_happy_path(
     localnet_signer: tuple[AccountTransactionSigner, str],
 ) -> None:
     """Test successful attestation with valid signature from authorized attester."""
+    from tests.helpers import create_schema_helper, grant_attester_helper, create_attestation_helper, parse_attestation_box
+    from nacl.signing import SigningKey
+    
     signer, owner_addr = localnet_signer
     schema_id = b"attest_test_schema"
-    uri = "test-schema"
-    flags = 1
-    schema_box = (deployed_client.app_id, b"schema:" + schema_id)
-    att_box = (deployed_client.app_id, b"attesters:" + schema_id)
 
-    # Create schema
-    deployed_client.call(
-        AASApplication.create_schema,
-        schema_id=schema_id,
-        owner=owner_addr,
-        uri=uri,
-        flags=flags,
-        boxes=[schema_box],
-        signer=signer,
-    )
+    # Create schema using helper
+    create_schema_helper(deployed_client, signer, schema_id, owner_addr)
 
     # Generate ed25519 keypair for attester
-    from nacl.signing import SigningKey
-
     attester_sk = SigningKey.generate()
     attester_pk = bytes(attester_sk.verify_key)
 
-    # Grant attester
-    deployed_client.call(
-        AASApplication.grant_attester,
-        schema_id=schema_id,
-        attester_pk=attester_pk,
-        boxes=[schema_box, att_box],
-        signer=signer,
-    )
+    # Grant attester using helper
+    grant_attester_helper(deployed_client, signer, schema_id, attester_pk)
 
-    # Prepare attestation data
-    subject_addr = owner_addr  # Use owner as subject for simplicity
-    claim_hash = b"H" * 32  # 32-byte claim hash
-    nonce = b"N" * 32  # 32-byte nonce
+    # Create attestation using helper
+    claim_hash = b"H" * 32
+    nonce = b"N" * 32
     cid = "QmTest123"
-
-    # Build canonical message and sign
-    import hashlib
-
-    from algosdk import encoding
-
-    subject_bytes = encoding.decode_address(subject_addr)
-    message = schema_id + subject_bytes + claim_hash + nonce
-    signature = bytes(attester_sk.sign(message).signature)
-
-    # Generate attestation ID
-    att_id = hashlib.sha256(message).digest()
-    att_storage_box = (deployed_client.app_id, b"att:" + att_id)
-
-    # Call attest method
-    result = deployed_client.call(
-        AASApplication.attest,
-        schema_id=schema_id,
-        subject_addr=subject_addr,
-        claim_hash_32=claim_hash,
-        nonce_32=nonce,
-        sig_64=signature,
-        cid=cid,
-        attester_pk=attester_pk,
-        boxes=[schema_box, att_box, att_storage_box],
-        signer=signer,
+    
+    att_id = create_attestation_helper(
+        deployed_client, signer, schema_id, owner_addr, claim_hash, nonce, attester_sk, cid
     )
 
-    # Verify transaction succeeded
-    transaction.wait_for_confirmation(algod_client, result.tx_id, 4)
-
-    # Verify attestation box was created with correct format
-    box_value = algod_client.application_box_by_name(deployed_client.app_id, b"att:" + att_id)[
-        "value"
-    ]  # type: ignore[call-overload]
-    import base64
-
-    data = base64.b64decode(box_value)
-
-    # Verify format: status(1B) + subject(32B) + schema_id_len(8B) + schema_id + cid
-    assert data[0:1] == b"A"  # Status OK
-    assert data[1:33] == subject_bytes  # Subject address
-    schema_id_len = int.from_bytes(data[33:41], "big")
-    assert data[41 : 41 + schema_id_len] == schema_id
-    assert data[41 + schema_id_len :] == cid.encode("utf-8")
+    # Verify attestation box using helper
+    attestation_data = parse_attestation_box(algod_client, deployed_client.app_id, att_id)
+    
+    assert attestation_data['status'] == 'A'  # Status OK
+    assert attestation_data['subject_addr'] == owner_addr
+    assert attestation_data['schema_id'] == schema_id
+    assert attestation_data['cid'] == cid
 
 
 @pytest.mark.localnet
@@ -518,46 +467,32 @@ def test_attest_unauthorized_attester(
     localnet_signer: tuple[AccountTransactionSigner, str],
 ) -> None:
     """Test that unauthorized attester cannot create attestations."""
+    from tests.helpers import create_schema_helper, build_attestation_message, generate_attestation_id
+    from nacl.signing import SigningKey
+    
     signer, owner_addr = localnet_signer
     schema_id = b"unauthorized_test"
-    uri = "test-schema"
-    flags = 1
-    schema_box = (deployed_client.app_id, b"schema:" + schema_id)
-    att_box = (deployed_client.app_id, b"attesters:" + schema_id)
 
-    # Create schema (no attesters granted)
-    deployed_client.call(
-        AASApplication.create_schema,
-        schema_id=schema_id,
-        owner=owner_addr,
-        uri=uri,
-        flags=flags,
-        boxes=[schema_box],
-        signer=signer,
-    )
+    # Create schema (no attesters granted) using helper
+    create_schema_helper(deployed_client, signer, schema_id, owner_addr)
 
     # Generate unauthorized attester
-    from nacl.signing import SigningKey
-
     unauthorized_sk = SigningKey.generate()
     unauthorized_pk = bytes(unauthorized_sk.verify_key)
 
     # Prepare attestation data
-    subject_addr = owner_addr
     claim_hash = b"U" * 32
     nonce = b"N" * 32
     cid = "QmUnauthorized"
 
-    # Build message and sign with unauthorized key
-    import hashlib
-
-    from algosdk import encoding
-
-    subject_bytes = encoding.decode_address(subject_addr)
-    message = schema_id + subject_bytes + claim_hash + nonce
+    # Build message and sign with unauthorized key using helper
+    message = build_attestation_message(schema_id, owner_addr, claim_hash, nonce)
     signature = bytes(unauthorized_sk.sign(message).signature)
+    att_id = generate_attestation_id(schema_id, owner_addr, claim_hash, nonce)
 
-    att_id = hashlib.sha256(message).digest()
+    # Prepare boxes
+    schema_box = (deployed_client.app_id, b"schema:" + schema_id)
+    att_box = (deployed_client.app_id, b"attesters:" + schema_id)
     att_storage_box = (deployed_client.app_id, b"att:" + att_id)
 
     # This should fail - unauthorized attester
@@ -565,7 +500,7 @@ def test_attest_unauthorized_attester(
         deployed_client.call(
             AASApplication.attest,
             schema_id=schema_id,
-            subject_addr=subject_addr,
+            subject_addr=owner_addr,
             claim_hash_32=claim_hash,
             nonce_32=nonce,
             sig_64=signature,
@@ -742,104 +677,53 @@ def test_revoke_attestation_success(
     localnet_signer: tuple[AccountTransactionSigner, str],
 ) -> None:
     """Test successful attestation revocation."""
+    from tests.helpers import create_schema_helper, grant_attester_helper, create_attestation_helper, parse_attestation_box
+    from nacl.signing import SigningKey
+    
     signer, owner_addr = localnet_signer
     schema_id = b"revoke_success_test"
-    uri = "revoke-test-schema"
-    flags = 1
-    schema_box = (deployed_client.app_id, b"schema:" + schema_id)
-    att_box = (deployed_client.app_id, b"attesters:" + schema_id)
 
-    # Create schema
-    deployed_client.call(
-        AASApplication.create_schema,
-        schema_id=schema_id,
-        owner=owner_addr,
-        uri=uri,
-        flags=flags,
-        boxes=[schema_box],
-        signer=signer,
-    )
+    # Create schema using helper
+    create_schema_helper(deployed_client, signer, schema_id, owner_addr)
 
-    # Generate ed25519 keypair for attester (copy exact pattern from working test)
-    from nacl.signing import SigningKey
-
+    # Generate ed25519 keypair for attester
     attester_sk = SigningKey.generate()
     attester_pk = bytes(attester_sk.verify_key)
 
-    # Grant attester
-    deployed_client.call(
-        AASApplication.grant_attester,
-        schema_id=schema_id,
-        attester_pk=attester_pk,
-        boxes=[schema_box, att_box],
-        signer=signer,
-    )
+    # Grant attester using helper
+    grant_attester_helper(deployed_client, signer, schema_id, attester_pk)
 
-    # Prepare attestation data (copy exact pattern)
-    subject_addr = owner_addr  # Use owner as subject for simplicity
-    claim_hash = b"R" * 32  # 32-byte claim hash
-    nonce = b"V" * 32  # 32-byte nonce
+    # Create attestation using helper
+    claim_hash = b"R" * 32
+    nonce = b"V" * 32
     cid = "QmRevoke123"
-
-    # Build canonical message and sign (copy exact pattern)
-    import hashlib
-
-    from algosdk import encoding
-
-    subject_bytes = encoding.decode_address(subject_addr)
-    message = schema_id + subject_bytes + claim_hash + nonce
-    signature = bytes(attester_sk.sign(message).signature)
-
-    # Generate attestation ID
-    att_id = hashlib.sha256(message).digest()
-    att_storage_box = (deployed_client.app_id, b"att:" + att_id)
-
-    # Create attestation
-    deployed_client.call(
-        AASApplication.attest,
-        schema_id=schema_id,
-        subject_addr=subject_addr,
-        claim_hash_32=claim_hash,
-        nonce_32=nonce,
-        sig_64=signature,
-        cid=cid,
-        attester_pk=attester_pk,
-        boxes=[schema_box, att_box, att_storage_box],
-        signer=signer,
+    
+    att_id = create_attestation_helper(
+        deployed_client, signer, schema_id, owner_addr, claim_hash, nonce, attester_sk, cid
     )
 
-    # Verify attestation exists and is active
-    box_value = algod_client.application_box_by_name(deployed_client.app_id, b"att:" + att_id)[
-        "value"
-    ]  # type: ignore[call-overload]
-    import base64
-
-    data = base64.b64decode(box_value)
-    assert data[0:1] == b"A"  # Status OK
+    # Verify attestation exists and is active using helper
+    attestation_data = parse_attestation_box(algod_client, deployed_client.app_id, att_id)
+    assert attestation_data['status'] == 'A'  # Status OK
 
     # Revoke attestation
     reason = 42  # Revocation reason code
+    att_storage_box = (deployed_client.app_id, b"att:" + att_id)
     result = deployed_client.call(
         AASApplication.revoke,
         att_id=att_id,
         reason=reason,
         boxes=[att_storage_box],
-        signer=signer,  # Use schema owner signer for simplicity
+        signer=signer,
     )
 
     # Verify revocation succeeded
     transaction.wait_for_confirmation(algod_client, result.tx_id, 4)
 
-    # Verify attestation status changed to "R"
-    box_value = algod_client.application_box_by_name(deployed_client.app_id, b"att:" + att_id)[
-        "value"
-    ]  # type: ignore[call-overload]
-    data = base64.b64decode(box_value)
-    assert data[0:1] == b"R"  # Status Revoked
-
-    # Verify reason is stored at the end (last 8 bytes)
-    reason_bytes = data[-8:]
-    assert int.from_bytes(reason_bytes, "big") == reason
+    # Verify attestation status changed and reason stored using helper
+    revoked_data = parse_attestation_box(algod_client, deployed_client.app_id, att_id)
+    assert revoked_data['status'] == 'R'  # Status Revoked
+    assert revoked_data['reason'] == reason
 
 
 @pytest.mark.localnet
@@ -1061,98 +945,145 @@ def test_revoke_nonexistent(
 
 
 @pytest.mark.localnet
+@pytest.mark.parametrize("param_name,invalid_length", [
+    ("attester_pk", 31),
+    ("attester_pk", 33), 
+    ("claim_hash", 31),
+    ("claim_hash", 33),
+    ("nonce", 31),
+    ("nonce", 33),
+])
+def test_invalid_parameter_lengths(
+    deployed_client: ApplicationClient,
+    localnet_signer: tuple[AccountTransactionSigner, str],
+    param_name: str,
+    invalid_length: int,
+) -> None:
+    """Test that invalid parameter lengths are rejected."""
+    from tests.helpers import create_schema_helper, grant_attester_helper
+    from nacl.signing import SigningKey
+    
+    signer, owner_addr = localnet_signer
+    schema_id = b"invalid_len_test"
+    
+    # Create schema
+    create_schema_helper(deployed_client, signer, schema_id, owner_addr)
+    
+    # Test invalid lengths for different parameters
+    if param_name == "attester_pk":
+        # Test invalid attester_pk length in grant_attester
+        invalid_attester_pk = b"X" * invalid_length
+        with pytest.raises(Exception):
+            grant_attester_helper(deployed_client, signer, schema_id, invalid_attester_pk)
+    
+    elif param_name in ["claim_hash", "nonce"]:
+        # Setup valid attester for attest tests
+        attester_sk = SigningKey.generate()
+        valid_attester_pk = bytes(attester_sk.verify_key)
+        grant_attester_helper(deployed_client, signer, schema_id, valid_attester_pk)
+        
+        # Prepare attest parameters
+        subject_addr = owner_addr
+        valid_claim_hash = b"H" * 32
+        valid_nonce = b"N" * 32
+        
+        # Create invalid parameter
+        if param_name == "claim_hash":
+            claim_hash = b"H" * invalid_length
+            nonce = valid_nonce
+        else:  # nonce
+            claim_hash = valid_claim_hash
+            nonce = b"N" * invalid_length
+            
+        # Build message and sign
+        from tests.helpers import build_attestation_message, generate_attestation_id
+        message = build_attestation_message(schema_id, subject_addr, claim_hash, nonce)
+        signature = bytes(attester_sk.sign(message).signature)
+        att_id = generate_attestation_id(schema_id, subject_addr, claim_hash, nonce)
+        
+        # Prepare boxes
+        schema_box = (deployed_client.app_id, b"schema:" + schema_id)
+        att_box = (deployed_client.app_id, b"attesters:" + schema_id)
+        att_storage_box = (deployed_client.app_id, b"att:" + att_id)
+        
+        # Should fail with invalid length
+        with pytest.raises(Exception):
+            deployed_client.call(
+                AASApplication.attest,
+                schema_id=schema_id,
+                subject_addr=subject_addr,
+                claim_hash_32=claim_hash,
+                nonce_32=nonce,
+                sig_64=signature,
+                cid="test",
+                attester_pk=valid_attester_pk,
+                boxes=[schema_box, att_box, att_storage_box],
+                signer=signer,
+            )
+
+
+@pytest.mark.localnet
+def test_grant_attester_nonexistent_schema(
+    deployed_client: ApplicationClient,
+    localnet_signer: tuple[AccountTransactionSigner, str],
+) -> None:
+    """Test that granting attester on non-existent schema fails."""
+    signer, _ = localnet_signer
+    nonexistent_schema_id = b"does_not_exist"
+    attester_pk = b"A" * 32
+    
+    # Should fail - schema doesn't exist
+    with pytest.raises(Exception):
+        from tests.helpers import grant_attester_helper
+        grant_attester_helper(deployed_client, signer, nonexistent_schema_id, attester_pk)
+
+
+@pytest.mark.localnet
 def test_full_attestation_flow(
     deployed_client: ApplicationClient,
     algod_client: AlgodClient,
     localnet_signer: tuple[AccountTransactionSigner, str],
 ) -> None:
-    """Test complete attestation flow on LocalNet.
+    """Test complete attestation flow on LocalNet using helpers.
 
     This test requires AlgoKit LocalNet running:
     algokit localnet start
     """
+    from tests.helpers import create_schema_helper, grant_attester_helper, create_attestation_helper, parse_attestation_box
+    from nacl.signing import SigningKey
+    
     signer, owner_addr = localnet_signer
     
     # 1. Contract is already deployed via deployed_client fixture
     
-    # 2. Create schema
+    # 2. Create schema using helper
     schema_id = b"full_flow_schema"
-    uri = "https://example.com/full-flow.json"
-    flags = 1
-    schema_box = (deployed_client.app_id, b"schema:" + schema_id)
-    att_box = (deployed_client.app_id, b"attesters:" + schema_id)
-
-    deployed_client.call(
-        AASApplication.create_schema,
-        schema_id=schema_id,
-        owner=owner_addr,
-        uri=uri,
-        flags=flags,
-        boxes=[schema_box],
-        signer=signer,
-    )
+    create_schema_helper(deployed_client, signer, schema_id, owner_addr, "https://example.com/full-flow.json", 1)
     
-    # 3. Grant attester
-    from nacl.signing import SigningKey
-
+    # 3. Grant attester using helper
     attester_sk = SigningKey.generate()
     attester_pk = bytes(attester_sk.verify_key)
-
-    deployed_client.call(
-        AASApplication.grant_attester,
-        schema_id=schema_id,
-        attester_pk=attester_pk,
-        boxes=[schema_box, att_box],
-        signer=signer,
-    )
+    grant_attester_helper(deployed_client, signer, schema_id, attester_pk)
     
-    # 4. Create attestation
-    subject_addr = owner_addr
+    # 4. Create attestation using helper
     claim_hash = b"F" * 32  
     nonce = b"L" * 32  
     cid = "QmFullFlow"
-
-    import hashlib
-
-    from algosdk import encoding
-
-    subject_bytes = encoding.decode_address(subject_addr)
-    message = schema_id + subject_bytes + claim_hash + nonce
-    signature = bytes(attester_sk.sign(message).signature)
-
-    att_id = hashlib.sha256(message).digest()
-    att_storage_box = (deployed_client.app_id, b"att:" + att_id)
-
-    result = deployed_client.call(
-        AASApplication.attest,
-        schema_id=schema_id,
-        subject_addr=subject_addr,
-        claim_hash_32=claim_hash,
-        nonce_32=nonce,
-        sig_64=signature,
-        cid=cid,
-        attester_pk=attester_pk,
-        boxes=[schema_box, att_box, att_storage_box],
-        signer=signer,
+    
+    att_id = create_attestation_helper(
+        deployed_client, signer, schema_id, owner_addr, claim_hash, nonce, attester_sk, cid
     )
-    transaction.wait_for_confirmation(algod_client, result.tx_id, 4)
     
-    # 5. Verify attestation
-    box_value = algod_client.application_box_by_name(deployed_client.app_id, b"att:" + att_id)[
-        "value"
-    ]  # type: ignore[call-overload]
-    import base64
-
-    data = base64.b64decode(box_value)
-    
-    assert data[0:1] == b"A"  # Status OK
-    assert data[1:33] == subject_bytes  # Subject address
-    schema_id_len = int.from_bytes(data[33:41], "big")
-    assert data[41 : 41 + schema_id_len] == schema_id
-    assert data[41 + schema_id_len :] == cid.encode("utf-8")
+    # 5. Verify attestation using helper
+    attestation_data = parse_attestation_box(algod_client, deployed_client.app_id, att_id)
+    assert attestation_data['status'] == 'A'  # Status OK
+    assert attestation_data['subject_addr'] == owner_addr
+    assert attestation_data['schema_id'] == schema_id
+    assert attestation_data['cid'] == cid
     
     # 6. Revoke attestation
     reason = 123
+    att_storage_box = (deployed_client.app_id, b"att:" + att_id)
     revoke_result = deployed_client.call(
         AASApplication.revoke,
         att_id=att_id,
@@ -1162,11 +1093,7 @@ def test_full_attestation_flow(
     )
     transaction.wait_for_confirmation(algod_client, revoke_result.tx_id, 4)
 
-    # Verify revocation
-    box_value = algod_client.application_box_by_name(deployed_client.app_id, b"att:" + att_id)[
-        "value"
-    ]  # type: ignore[call-overload]
-    data = base64.b64decode(box_value)
-    assert data[0:1] == b"R"  # Status Revoked
-    reason_bytes = data[-8:]
-    assert int.from_bytes(reason_bytes, "big") == reason
+    # Verify revocation using helper
+    revoked_data = parse_attestation_box(algod_client, deployed_client.app_id, att_id)
+    assert revoked_data['status'] == 'R'  # Status Revoked
+    assert revoked_data['reason'] == reason

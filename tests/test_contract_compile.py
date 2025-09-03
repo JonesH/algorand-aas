@@ -9,9 +9,12 @@ from __future__ import annotations
 from beaker.client import ApplicationClient
 from algosdk.v2client.algod import AlgodClient
 
+import pytest
+
 from aas.contracts.aas import get_app
 
 
+@pytest.mark.localnet
 def test_contract_compiles() -> None:
     """Test that AAS contract compiles successfully using LocalNet."""
     app = get_app()
