@@ -1061,18 +1061,112 @@ def test_revoke_nonexistent(
 
 
 @pytest.mark.localnet
-def test_full_attestation_flow() -> None:
+def test_full_attestation_flow(
+    deployed_client: ApplicationClient,
+    algod_client: AlgodClient,
+    localnet_signer: tuple[AccountTransactionSigner, str],
+) -> None:
     """Test complete attestation flow on LocalNet.
 
     This test requires AlgoKit LocalNet running:
     algokit localnet start
     """
-    # TODO: Implement when we have contract methods
-    # 1. Deploy contract
+    signer, owner_addr = localnet_signer
+    
+    # 1. Contract is already deployed via deployed_client fixture
+    
     # 2. Create schema
-    # 3. Grant attester
-    # 4. Create attestation
-    # 5. Verify attestation
-    # 6. Revoke attestation
+    schema_id = b"full_flow_schema"
+    uri = "https://example.com/full-flow.json"
+    flags = 1
+    schema_box = (deployed_client.app_id, b"schema:" + schema_id)
+    att_box = (deployed_client.app_id, b"attesters:" + schema_id)
 
-    pytest.skip("LocalNet integration test - implement in later steps")
+    deployed_client.call(
+        AASApplication.create_schema,
+        schema_id=schema_id,
+        owner=owner_addr,
+        uri=uri,
+        flags=flags,
+        boxes=[schema_box],
+        signer=signer,
+    )
+    
+    # 3. Grant attester
+    from nacl.signing import SigningKey
+
+    attester_sk = SigningKey.generate()
+    attester_pk = bytes(attester_sk.verify_key)
+
+    deployed_client.call(
+        AASApplication.grant_attester,
+        schema_id=schema_id,
+        attester_pk=attester_pk,
+        boxes=[schema_box, att_box],
+        signer=signer,
+    )
+    
+    # 4. Create attestation
+    subject_addr = owner_addr
+    claim_hash = b"F" * 32  
+    nonce = b"L" * 32  
+    cid = "QmFullFlow"
+
+    import hashlib
+
+    from algosdk import encoding
+
+    subject_bytes = encoding.decode_address(subject_addr)
+    message = schema_id + subject_bytes + claim_hash + nonce
+    signature = bytes(attester_sk.sign(message).signature)
+
+    att_id = hashlib.sha256(message).digest()
+    att_storage_box = (deployed_client.app_id, b"att:" + att_id)
+
+    result = deployed_client.call(
+        AASApplication.attest,
+        schema_id=schema_id,
+        subject_addr=subject_addr,
+        claim_hash_32=claim_hash,
+        nonce_32=nonce,
+        sig_64=signature,
+        cid=cid,
+        attester_pk=attester_pk,
+        boxes=[schema_box, att_box, att_storage_box],
+        signer=signer,
+    )
+    transaction.wait_for_confirmation(algod_client, result.tx_id, 4)
+    
+    # 5. Verify attestation
+    box_value = algod_client.application_box_by_name(deployed_client.app_id, b"att:" + att_id)[
+        "value"
+    ]  # type: ignore[call-overload]
+    import base64
+
+    data = base64.b64decode(box_value)
+    
+    assert data[0:1] == b"A"  # Status OK
+    assert data[1:33] == subject_bytes  # Subject address
+    schema_id_len = int.from_bytes(data[33:41], "big")
+    assert data[41 : 41 + schema_id_len] == schema_id
+    assert data[41 + schema_id_len :] == cid.encode("utf-8")
+    
+    # 6. Revoke attestation
+    reason = 123
+    revoke_result = deployed_client.call(
+        AASApplication.revoke,
+        att_id=att_id,
+        reason=reason,
+        boxes=[att_storage_box],
+        signer=signer,
+    )
+    transaction.wait_for_confirmation(algod_client, revoke_result.tx_id, 4)
+
+    # Verify revocation
+    box_value = algod_client.application_box_by_name(deployed_client.app_id, b"att:" + att_id)[
+        "value"
+    ]  # type: ignore[call-overload]
+    data = base64.b64decode(box_value)
+    assert data[0:1] == b"R"  # Status Revoked
+    reason_bytes = data[-8:]
+    assert int.from_bytes(reason_bytes, "big") == reason
