@@ -102,3 +102,7 @@ tmp/
 .claude/
 .aider*
 worktrees/
+
+# Test/development temporary files
+*.smoke.json
+*_tests.txt
