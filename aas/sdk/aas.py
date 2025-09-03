@@ -7,10 +7,7 @@ Handles schema creation, attestation writing, and verification.
 from __future__ import annotations
 
 from algosdk.v2client import algod
-from algosdk import account
 
-from .models import Schema, Attestation, ClaimData
-from .hashing import generate_schema_id, generate_claim_hash, generate_attestation_id
 
 
 class AASClient:

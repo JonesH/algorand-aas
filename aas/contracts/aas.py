@@ -9,12 +9,16 @@ from __future__ import annotations
 from beaker import Application
 
 
+class AASApplication(Application):
+    """Minimal AAS Application for Step 0 scaffolding."""
+    pass
+
+
 def get_app() -> Application:
     """Get the AAS Beaker application."""
-    app = Application("AlgorandAAS")
-    return app
+    return AASApplication()
 
 
 if __name__ == "__main__":
     app = get_app()
-    print(app.compile_teal())
+    print("AAS Application created successfully")

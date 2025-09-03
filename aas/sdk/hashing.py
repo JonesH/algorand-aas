@@ -11,7 +11,6 @@ import json
 from typing import Any
 
 from nacl.signing import SigningKey, VerifyKey
-from nacl.exceptions import BadSignatureError
 
 
 def canonical_json_hash(data: dict[str, Any]) -> str:
@@ -25,7 +24,6 @@ def canonical_json_hash(data: dict[str, Any]) -> str:
     """
     if not data:
         raise ValueError("Data cannot be empty")
-    
     canonical_json = json.dumps(data, sort_keys=True, separators=(',', ':'))
     return hashlib.sha256(canonical_json.encode('utf-8')).hexdigest()
 
@@ -48,19 +46,9 @@ def generate_attestation_id(schema_id: str, subject: str, claim_hash: str, nonce
 
 def sign_message(signing_key: SigningKey, schema_id: str, subject: str, claim_hash: str, nonce: str) -> str:
     """Sign attestation message with ed25519."""
-    message = f"{schema_id}|{subject}|{claim_hash}|{nonce}"
-    message_hash = hashlib.sha256(message.encode('utf-8')).digest()
-    signature = signing_key.sign(message_hash)
-    return signature.signature.hex()
+    raise NotImplementedError("TDD: implement sign_message")
 
 
 def verify_signature(verify_key: VerifyKey, signature_hex: str, schema_id: str, subject: str, claim_hash: str, nonce: str) -> bool:
     """Verify ed25519 signature."""
-    try:
-        message = f"{schema_id}|{subject}|{claim_hash}|{nonce}"
-        message_hash = hashlib.sha256(message.encode('utf-8')).digest()
-        signature = bytes.fromhex(signature_hex)
-        verify_key.verify(message_hash, signature)
-        return True
-    except (BadSignatureError, ValueError):
-        return False
+    raise NotImplementedError("TDD: implement verify_signature")

@@ -99,3 +99,4 @@ htmlcov/
 .tmp/
 tmp/
 .python-version
+.claude/

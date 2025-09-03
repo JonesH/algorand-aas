@@ -6,14 +6,13 @@ Outputs application ID for use with SDK and CLI.
 
 from __future__ import annotations
 
-from beaker import client
 
 from aas.contracts.aas import get_app
 
 
 def deploy() -> int:
     """Deploy AAS application and return app ID."""
-    app = get_app()
+    app = get_app()  # noqa: F841 - Used in future steps
     
     # TODO: Implement deployment logic
     # - Setup algod client

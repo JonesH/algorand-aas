@@ -258,3 +258,4 @@ git commit -m "feat: add schema creation functionality"
 
 use context7
 - never mention Claude in commit messages or anywhere else
+- Always formulate semantic commit messages without mentioning Claude

@@ -7,22 +7,18 @@ requires-python = ">=3.13"
 dependencies = [
     "algokit>=2.8.0",
     "beaker-pyteal",
-    "pyteal", 
+    "pyteal",
     "algosdk",
     "pynacl",
-    "typer[all]",
+    "typer",
     "pydantic>=2.0",
     "pydantic-settings",
-    "rich"
+    "rich",
+    "setuptools>=80.9.0",
 ]
 
 [project.optional-dependencies]
-dev = [
-    "pytest",
-    "mypy", 
-    "ruff",
-    "pre-commit"
-]
+dev = ["pytest", "mypy", "ruff", "pre-commit"]
 
 [project.scripts]
 aas = "aas.cli.main:app"
