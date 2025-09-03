@@ -100,3 +100,4 @@ htmlcov/
 tmp/
 .python-version
 .claude/
+.aider*

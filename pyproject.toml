@@ -3,7 +3,7 @@ name = "algorand-aas"
 version = "0.1.0"
 description = "Algorand Attestation Service - Schema Registry + Attestation Writer"
 readme = "README.md"
-requires-python = ">=3.13"
+requires-python = ">=3.12"
 dependencies = [
     "algokit>=2.8.0",
     "beaker-pyteal",
@@ -22,3 +22,10 @@ dev = ["pytest", "mypy", "ruff", "pre-commit"]
 
 [project.scripts]
 aas = "aas.cli.main:app"
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+markers = [
+    "localnet: marks tests as requiring AlgoKit LocalNet (deselect with '-m \"not localnet\"')",
+]
+filterwarnings = ["ignore:pkg_resources is deprecated.*:UserWarning"]

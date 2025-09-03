@@ -48,8 +48,8 @@ pytest -q -m localnet
 mypy .
 ruff check .
 
-# Run with PYTHONPATH for tests
-PYTHONPATH=$(pwd) uv run pytest -q
+# Run tests with `uv run pytest`
+uv run pytest -q
 ```
 
 ## Project Structure (Enforced)
@@ -124,7 +124,7 @@ aas/
 
 ### Import Practices
 - **Never do local imports** unless absolutely necessary
-- **Never do relative imports** - always use absolute imports and run with explicit PYTHONPATH
+- **Never do relative imports** - always use absolute imports
 - **NEVER use star imports** like `from libsdk import *` - always import specific items
 - **ALWAYS** import specific items: `from algosdk import account, mnemonic`
 
@@ -146,7 +146,7 @@ Each step MUST follow this exact sequence:
 
 ### Test Organization
 - Unit tests: Fast, no network dependencies
-- Integration tests: Mark with `@pytest.mark.localnet` 
+- Integration tests: Mark with `@pytest.mark.localnet`
 - If LocalNet unavailable: Skip localnet tests with clear message
 
 ## Algorand-Specific Best Practices
@@ -189,7 +189,7 @@ def test_full_attestation_flow():
 ```
 
 ### Test Runners
-- Whenever running tests set `PYTHONPATH=$(pwd) uv run ...`
+- Whenever running tests set `uv run ...`
 
 ## Git Workflow (CRITICAL RULES)
 
@@ -224,7 +224,7 @@ git commit -m "feat: add schema creation functionality"
 
 ### Code Quality Gates
 - All code must pass `mypy .` with no errors
-- All code must pass `ruff check .` with no violations  
+- All code must pass `ruff check .` with no violations
 - All tests must pass before any commit
 - Pre-commit hooks enforce quality automatically
 
