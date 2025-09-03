@@ -101,3 +101,4 @@ tmp/
 .python-version
 .claude/
 .aider*
+worktrees/
