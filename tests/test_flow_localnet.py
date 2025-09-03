@@ -375,6 +375,291 @@ def test_grant_attester_idempotent(deployed_client: ApplicationClient, algod_cli
     assert raw == attester_pk
 
 
+@pytest.mark.localnet
+def test_attest_happy_path(deployed_client: ApplicationClient, algod_client: AlgodClient, localnet_signer: tuple[AccountTransactionSigner, str]) -> None:
+    """Test successful attestation with valid signature from authorized attester."""
+    signer, owner_addr = localnet_signer
+    schema_id = b"attest_test_schema"
+    uri = "test-schema"
+    flags = 1
+    schema_box = (deployed_client.app_id, b"schema:" + schema_id)
+    att_box = (deployed_client.app_id, b"attesters:" + schema_id)
+
+    # Create schema
+    deployed_client.call(
+        AASApplication.create_schema,
+        schema_id=schema_id,
+        owner=owner_addr,
+        uri=uri,
+        flags=flags,
+        boxes=[schema_box],
+        signer=signer,
+    )
+
+    # Generate ed25519 keypair for attester
+    from nacl.signing import SigningKey
+    attester_sk = SigningKey.generate()
+    attester_pk = bytes(attester_sk.verify_key)
+
+    # Grant attester
+    deployed_client.call(
+        AASApplication.grant_attester,
+        schema_id=schema_id,
+        attester_pk=attester_pk,
+        boxes=[schema_box, att_box],
+        signer=signer,
+    )
+
+    # Prepare attestation data
+    subject_addr = owner_addr  # Use owner as subject for simplicity
+    claim_hash = b"H" * 32  # 32-byte claim hash
+    nonce = b"N" * 32  # 32-byte nonce
+    cid = "QmTest123"
+
+    # Build canonical message and sign
+    import hashlib
+    from algosdk import encoding
+    subject_bytes = encoding.decode_address(subject_addr)
+    message = schema_id + subject_bytes + claim_hash + nonce
+    signature = bytes(attester_sk.sign(message).signature)
+
+    # Generate attestation ID
+    att_id = hashlib.sha256(message).digest()
+    att_storage_box = (deployed_client.app_id, b"att:" + att_id)
+
+    # Call attest method
+    result = deployed_client.call(
+        AASApplication.attest,
+        schema_id=schema_id,
+        subject_addr=subject_addr,
+        claim_hash_32=claim_hash,
+        nonce_32=nonce,
+        sig_64=signature,
+        cid=cid,
+        attester_pk=attester_pk,
+        boxes=[schema_box, att_box, att_storage_box],
+        signer=signer,
+    )
+    
+    # Verify transaction succeeded
+    transaction.wait_for_confirmation(algod_client, result.tx_id, 4)
+    
+    # Verify attestation box was created with correct format
+    box_value = algod_client.application_box_by_name(deployed_client.app_id, b"att:" + att_id)["value"]
+    import base64
+    data = base64.b64decode(box_value)
+    
+    # Verify format: status(1B) + subject(32B) + schema_id_len(8B) + schema_id + cid
+    assert data[0:1] == b"A"  # Status OK
+    assert data[1:33] == subject_bytes  # Subject address
+    schema_id_len = int.from_bytes(data[33:41], 'big')
+    assert data[41:41+schema_id_len] == schema_id
+    assert data[41+schema_id_len:] == cid.encode('utf-8')
+
+
+@pytest.mark.localnet
+def test_attest_unauthorized_attester(deployed_client: ApplicationClient, algod_client: AlgodClient, localnet_signer: tuple[AccountTransactionSigner, str]) -> None:
+    """Test that unauthorized attester cannot create attestations."""
+    signer, owner_addr = localnet_signer
+    schema_id = b"unauthorized_test"
+    uri = "test-schema"
+    flags = 1
+    schema_box = (deployed_client.app_id, b"schema:" + schema_id)
+    att_box = (deployed_client.app_id, b"attesters:" + schema_id)
+
+    # Create schema (no attesters granted)
+    deployed_client.call(
+        AASApplication.create_schema,
+        schema_id=schema_id,
+        owner=owner_addr,
+        uri=uri,
+        flags=flags,
+        boxes=[schema_box],
+        signer=signer,
+    )
+
+    # Generate unauthorized attester
+    from nacl.signing import SigningKey
+    unauthorized_sk = SigningKey.generate()
+    unauthorized_pk = bytes(unauthorized_sk.verify_key)
+
+    # Prepare attestation data
+    subject_addr = owner_addr
+    claim_hash = b"U" * 32
+    nonce = b"N" * 32
+    cid = "QmUnauthorized"
+
+    # Build message and sign with unauthorized key
+    import hashlib
+    from algosdk import encoding
+    subject_bytes = encoding.decode_address(subject_addr)
+    message = schema_id + subject_bytes + claim_hash + nonce
+    signature = bytes(unauthorized_sk.sign(message).signature)
+
+    att_id = hashlib.sha256(message).digest()
+    att_storage_box = (deployed_client.app_id, b"att:" + att_id)
+
+    # This should fail - unauthorized attester
+    with pytest.raises(Exception):
+        deployed_client.call(
+            AASApplication.attest,
+            schema_id=schema_id,
+            subject_addr=subject_addr,
+            claim_hash_32=claim_hash,
+            nonce_32=nonce,
+            sig_64=signature,
+            cid=cid,
+            attester_pk=unauthorized_pk,
+            boxes=[schema_box, att_box, att_storage_box],
+            signer=signer,
+        )
+
+
+@pytest.mark.localnet
+def test_attest_duplicate_fails(deployed_client: ApplicationClient, algod_client: AlgodClient, localnet_signer: tuple[AccountTransactionSigner, str]) -> None:
+    """Test that duplicate attestation IDs are rejected."""
+    signer, owner_addr = localnet_signer
+    schema_id = b"duplicate_att_test"
+    uri = "test-schema"
+    flags = 1
+    schema_box = (deployed_client.app_id, b"schema:" + schema_id)
+    att_box = (deployed_client.app_id, b"attesters:" + schema_id)
+
+    # Create schema and grant attester
+    deployed_client.call(
+        AASApplication.create_schema,
+        schema_id=schema_id,
+        owner=owner_addr,
+        uri=uri,
+        flags=flags,
+        boxes=[schema_box],
+        signer=signer,
+    )
+
+    from nacl.signing import SigningKey
+    attester_sk = SigningKey.generate()
+    attester_pk = bytes(attester_sk.verify_key)
+
+    deployed_client.call(
+        AASApplication.grant_attester,
+        schema_id=schema_id,
+        attester_pk=attester_pk,
+        boxes=[schema_box, att_box],
+        signer=signer,
+    )
+
+    # Prepare identical attestation data for both attempts
+    subject_addr = owner_addr
+    claim_hash = b"D" * 32  # Same data = same att_id
+    nonce = b"N" * 32
+    cid = "QmDuplicate"
+
+    import hashlib
+    from algosdk import encoding
+    subject_bytes = encoding.decode_address(subject_addr)
+    message = schema_id + subject_bytes + claim_hash + nonce
+    signature = bytes(attester_sk.sign(message).signature)
+
+    att_id = hashlib.sha256(message).digest()
+    att_storage_box = (deployed_client.app_id, b"att:" + att_id)
+
+    # First call should succeed
+    result = deployed_client.call(
+        AASApplication.attest,
+        schema_id=schema_id,
+        subject_addr=subject_addr,
+        claim_hash_32=claim_hash,
+        nonce_32=nonce,
+        sig_64=signature,
+        cid=cid,
+        attester_pk=attester_pk,
+        boxes=[schema_box, att_box, att_storage_box],
+        signer=signer,
+    )
+    transaction.wait_for_confirmation(algod_client, result.tx_id, 4)
+    
+    # Second identical call should fail (duplicate)
+    with pytest.raises(Exception):
+        deployed_client.call(
+            AASApplication.attest,
+            schema_id=schema_id,
+            subject_addr=subject_addr,
+            claim_hash_32=claim_hash,
+            nonce_32=nonce,
+            sig_64=signature,
+            cid=cid,
+            attester_pk=attester_pk,
+            boxes=[schema_box, att_box, att_storage_box],
+            signer=signer,
+        )
+
+
+@pytest.mark.localnet
+def test_attest_invalid_signature(deployed_client: ApplicationClient, algod_client: AlgodClient, localnet_signer: tuple[AccountTransactionSigner, str]) -> None:
+    """Test that invalid signatures are rejected."""
+    signer, owner_addr = localnet_signer
+    schema_id = b"invalid_sig_test"
+    uri = "test-schema"
+    flags = 1
+    schema_box = (deployed_client.app_id, b"schema:" + schema_id)
+    att_box = (deployed_client.app_id, b"attesters:" + schema_id)
+
+    # Create schema and grant attester
+    deployed_client.call(
+        AASApplication.create_schema,
+        schema_id=schema_id,
+        owner=owner_addr,
+        uri=uri,
+        flags=flags,
+        boxes=[schema_box],
+        signer=signer,
+    )
+
+    from nacl.signing import SigningKey
+    attester_sk = SigningKey.generate()
+    attester_pk = bytes(attester_sk.verify_key)
+
+    deployed_client.call(
+        AASApplication.grant_attester,
+        schema_id=schema_id,
+        attester_pk=attester_pk,
+        boxes=[schema_box, att_box],
+        signer=signer,
+    )
+
+    # Prepare attestation data
+    subject_addr = owner_addr
+    claim_hash = b"I" * 32
+    nonce = b"N" * 32
+    cid = "QmInvalid"
+
+    import hashlib
+    from algosdk import encoding
+    subject_bytes = encoding.decode_address(subject_addr)
+    message = schema_id + subject_bytes + claim_hash + nonce
+
+    # Create invalid signature (wrong data or malformed)
+    invalid_signature = b"X" * 64  # Wrong signature
+
+    att_id = hashlib.sha256(message).digest()
+    att_storage_box = (deployed_client.app_id, b"att:" + att_id)
+
+    # This should fail - invalid signature
+    with pytest.raises(Exception):
+        deployed_client.call(
+            AASApplication.attest,
+            schema_id=schema_id,
+            subject_addr=subject_addr,
+            claim_hash_32=claim_hash,
+            nonce_32=nonce,
+            sig_64=invalid_signature,
+            cid=cid,
+            attester_pk=attester_pk,
+            boxes=[schema_box, att_box, att_storage_box],
+            signer=signer,
+        )
+
+
 @pytest.mark.localnet  
 def test_full_attestation_flow() -> None:
     """Test complete attestation flow on LocalNet.

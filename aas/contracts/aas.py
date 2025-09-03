@@ -25,11 +25,79 @@ from pyteal import (
     While,
     If,
     And,
+    Ed25519Verify_Bare,
+    Sha256,
+    OpUp,
+    OpUpMode,
 )
 
 
 class AASApplication(Application):
     """AAS Application with Schema Registry functionality."""
+    
+    def _verify_attester_authorized(self, schema_id_bytes, sig_pk):
+        """Check if attester public key is in authorized list."""
+        akey, cur = (
+            ScratchVar(TealType.bytes),
+            ScratchVar(TealType.bytes)
+        )
+        att_bg = BoxGet(akey.load())
+        return Seq(
+            akey.store(Concat(Bytes("attesters:"), schema_id_bytes)),
+            att_bg,
+            Assert(att_bg.hasValue()),
+            cur.store(att_bg.value()),
+            self._find_attester_in_list(cur.load(), sig_pk)
+        )
+    
+    def _find_attester_in_list(self, attesters_list, target_pk):
+        """Search for attester public key in concatenated list."""
+        idx, found = ScratchVar(TealType.uint64), ScratchVar(TealType.uint64)
+        return Seq(
+            idx.store(Int(0)),
+            found.store(Int(0)),
+            While(And(idx.load() < Len(attesters_list), found.load() == Int(0))).Do(
+                Seq(
+                    If(Extract(attesters_list, idx.load(), Int(32)) == target_pk)
+                    .Then(found.store(Int(1)))
+                    .Else(idx.store(idx.load() + Int(32)))
+                )
+            ),
+            Assert(found.load() == Int(1))
+        )
+    
+    def _verify_signature(self, message_bytes, signature_bytes, pk_bytes):
+        """Verify ed25519 signature using Ed25519Verify_Bare."""
+        opup = OpUp(OpUpMode.OnCall)
+        return Seq(
+            Assert(Len(signature_bytes) == Int(64)),
+            Assert(Len(pk_bytes) == Int(32)),
+            opup.ensure_budget(Int(2000)),  # Increase opcode budget for ed25519 verification
+            Assert(Ed25519Verify_Bare(message_bytes, signature_bytes, pk_bytes))
+        )
+    
+    def _check_attestation_unique(self, att_id_bytes):
+        """Ensure attestation ID doesn't already exist."""
+        existing = BoxGet(Concat(Bytes("att:"), att_id_bytes))
+        return Seq(
+            existing,
+            Assert(Not(existing.hasValue()))
+        )
+    
+    def _store_attestation(self, att_id_bytes, subject_addr_bytes, schema_id_bytes, cid_str):
+        """Store attestation data in att:<att_id> box."""
+        att_key, att_val = ScratchVar(TealType.bytes), ScratchVar(TealType.bytes)
+        return Seq(
+            att_key.store(Concat(Bytes("att:"), att_id_bytes)),
+            att_val.store(Concat(
+                Bytes("base64", "QQ=="),  # "A" = status OK (1 byte)
+                subject_addr_bytes,       # subject (32 bytes)
+                Itob(Len(schema_id_bytes)),  # schema_id length (8 bytes)
+                schema_id_bytes,          # schema_id (variable)
+                cid_str                   # cid string (variable)
+            )),
+            BoxPut(att_key.load(), att_val.load())
+        )
     
     @external
     def create_schema(
@@ -104,6 +172,53 @@ class AASApplication(Application):
                 BoxPut(akey.load(), Concat(cur.load(), attester_pk.get()))
             ),
             Log(Concat(Bytes("AttesterGranted:"), schema_id.get())),
+        )
+
+    @external
+    def attest(
+        self,
+        schema_id: abi.DynamicBytes,
+        subject_addr: abi.Address,
+        claim_hash_32: abi.DynamicBytes,
+        nonce_32: abi.DynamicBytes,
+        sig_64: abi.DynamicBytes,
+        cid: abi.String,
+        attester_pk: abi.DynamicBytes,
+    ):
+        """Create attestation with signature verification.
+        
+        Verifies ed25519 signature from authorized attester.
+        Stores attestation in att:<att_id> box.
+        """
+        message, att_id = ScratchVar(TealType.bytes), ScratchVar(TealType.bytes)
+        return Seq(
+            # Validate input lengths
+            Assert(Len(claim_hash_32.get()) == Int(32)),
+            Assert(Len(nonce_32.get()) == Int(32)),
+            
+            # Build canonical message: schema_id + subject + claim_hash + nonce
+            message.store(Concat(
+                schema_id.get(),
+                subject_addr.get(), 
+                claim_hash_32.get(),
+                nonce_32.get()
+            )),
+            # Generate attestation ID
+            att_id.store(Sha256(message.load())),
+            
+            # Verify attester is authorized for this schema
+            self._verify_attester_authorized(schema_id.get(), attester_pk.get()),
+            
+            # Verify signature
+            self._verify_signature(message.load(), sig_64.get(), attester_pk.get()),
+            
+            # Ensure attestation is unique
+            self._check_attestation_unique(att_id.load()),
+            
+            # Store attestation
+            self._store_attestation(att_id.load(), subject_addr.get(), schema_id.get(), cid.get()),
+            
+            Log(Concat(Bytes("Attested:"), att_id.load())),
         )
 
 

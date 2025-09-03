@@ -1,3 +1,10 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+packages = ["aas"]
+
 [project]
 name = "algorand-aas"
 version = "0.1.0"
@@ -29,3 +36,9 @@ markers = [
     "localnet: marks tests as requiring AlgoKit LocalNet (deselect with '-m \"not localnet\"')",
 ]
 filterwarnings = ["ignore:pkg_resources is deprecated.*:UserWarning"]
+
+[tool.mypy]
+exclude = ["worktrees/"]
+
+[tool.ruff]
+exclude = ["worktrees/"]
