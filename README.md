@@ -15,17 +15,17 @@ A minimal, production-grade Algorand Attestation Service inspired by EAS: a Sche
 
 ### Prerequisites
 
-- Python 3.13+
+- Python 3.12+
 - AlgoKit LocalNet (for development)
 
 ### Installation
 
 ```bash
 # Install in development mode
-uv pip install -e .[dev]
+uv pip install -e .
 
-# Or using pip
-pip install -e .[dev]
+# Install with development dependencies
+uv pip install -e .[dev]
 ```
 
 ### Development Setup
@@ -39,14 +39,20 @@ export ALGOD_URL=http://localhost:4001
 export ALGOD_TOKEN=<token-from-localnet>
 export DEPLOYER_MNEMONIC="25 words ..."
 
-# Run tests
-pytest -q
+# Run all tests
+uv run pytest
+
+# Run only unit tests (skip LocalNet)
+uv run pytest -m "not localnet"
+
+# Run only LocalNet integration tests  
+uv run pytest -m localnet
 
 # Run type checking
-mypy .
+uv run mypy .
 
 # Run linting
-ruff check .
+uv run ruff check .
 ```
 
 ### CLI Usage
@@ -55,39 +61,43 @@ ruff check .
 # Show help
 aas --help
 
-# Create a schema (not implemented yet)
+# Create a schema (TODO: CLI not implemented yet)
 aas create-schema
 
-# Grant attester permissions (not implemented yet)  
+# Grant attester permissions (TODO: CLI not implemented yet)  
 aas grant-attester
 
-# Create an attestation (not implemented yet)
+# Create an attestation (TODO: CLI not implemented yet)
 aas attest
 
-# Revoke an attestation (not implemented yet)
+# Revoke an attestation (TODO: CLI not implemented yet)
 aas revoke
 
-# Get information (not implemented yet)
+# Get information (TODO: CLI not implemented yet)
 aas get
 ```
 
 ## Architecture
 
 ### Smart Contract (PyTeal + Beaker)
-- `create_schema(schema_id, owner, uri, flags)`: Register new schema
-- `grant_attester(schema_id, attester_pk)`: Grant attestation permissions
-- `attest(...)`: Create new attestation with signature verification
-- `revoke(att_id, reason)`: Revoke existing attestation
+- `create_schema(schema_id, owner, uri, flags)`: Register new schema ✅ 
+- `grant_attester(schema_id, attester_pk)`: Grant attestation permissions ✅
+- `attest(schema_id, subject_addr, claim_hash_32, nonce_32, sig_64, cid, attester_pk)`: Create attestation with ed25519 signature verification ✅
+- `revoke(att_id, reason)`: Revoke existing attestation ⏳
 
-### Box Storage
-- `schema:<schema_id>` -> owner addr, flags, uri slice
-- `att:<att_id>` -> status (OK/RV), subject addr, schema id, optional cid slice
+### Box Storage Format
+- `schema:<schema_id>` → owner(32B) + flags(8B) + uri(variable)
+- `attesters:<schema_id>` → concatenated 32-byte attester public keys
+- `att:<att_id>` → status(1B) + subject(32B) + schema_id_len(8B) + schema_id + cid
+
+### Attestation ID Generation
+Deterministic: `attestation_id = sha256(schema_id + subject_addr + claim_hash + nonce)`
 
 ### SDK (Python)
-- Canonical JSON hashing for deterministic IDs
-- Ed25519 signing and verification
-- Type-safe Pydantic models
-- High-level client interface
+- Canonical JSON hashing for deterministic IDs ✅
+- Ed25519 signing and verification helpers ✅
+- Type-safe Pydantic models ✅
+- High-level client interface ⏳
 
 ## Development
 
@@ -102,26 +112,72 @@ This project follows TDD (Test-Driven Development):
 
 ```
 aas/
-  contracts/aas.py          # Beaker Router
+  contracts/aas.py          # Beaker Router with PyTeal smart contract
   sdk/
-     aas.py               # Core SDK
-     models.py            # Pydantic models  
-     hashing.py           # Crypto utilities
-  cli/main.py              # Typer CLI
-  scripts/deploy.py        # Deployment script
+     aas.py                # Core SDK (TODO: high-level client)
+     models.py             # Pydantic models for type safety  
+     hashing.py            # Crypto utilities (JSON hashing, ed25519)
+  cli/
+     main.py               # Typer CLI (TODO: implement commands)
+  scripts/
+     deploy.py             # Deployment script (TODO: implement)
+tests/
+  test_contract_compile.py  # Contract compilation tests
+  test_sdk_hashing.py       # SDK hashing and crypto tests  
+  test_flow_localnet.py     # LocalNet integration tests
 ```
 
-## Status
+## Implementation Status
 
-**Currently in Step 0**: Scaffold & compile sanity
+**✅ Steps 1-3 Complete**: Core attestation functionality implemented
 
-- [x] Repository structure created
-- [x] Dependencies configured  
-- [x] Basic scaffolding files
-- [ ] Contract compilation tests
-- [ ] SDK hashing tests
+### Step 1: Schema Registry ✅
+- [x] `create_schema` contract method with box storage
+- [x] Schema ID generation and validation
+- [x] Owner-only schema management
+- [x] Comprehensive LocalNet integration tests
 
-Next: Step 1 - Implement `create_schema` functionality
+### Step 2: Attester Management ✅  
+- [x] `grant_attester` contract method with owner validation
+- [x] Idempotent attester storage in concatenated format
+- [x] 32-byte ed25519 public key validation
+- [x] Authorization checks and error handling
+
+### Step 3: Attestation Creation ✅
+- [x] `attest` contract method with full ed25519 signature verification
+- [x] OpUp integration for ed25519 operation budget (~1,900 ops)
+- [x] Canonical message construction and deterministic ID generation
+- [x] Attester authorization verification
+- [x] Duplicate prevention and box storage
+- [x] Comprehensive test coverage (happy path, unauthorized, duplicates, invalid signatures)
+
+### Step 4: Attestation Revocation ⏳
+- [ ] `revoke` contract method  
+- [ ] Revocation reason tracking
+- [ ] Status updates in attestation boxes
+
+### Step 5: Python SDK ⏳
+- [x] Core hashing utilities (canonical JSON, deterministic IDs)
+- [x] Ed25519 signing helpers (sign_message function signatures)
+- [x] Pydantic models for type safety
+- [ ] High-level client wrapper for algod
+- [ ] verify_attestation() box reading
+- [ ] End-to-end SDK integration tests
+
+### Step 6: CLI Interface ⏳
+- [x] Basic Typer CLI structure
+- [ ] create-schema command
+- [ ] grant-attester command  
+- [ ] attest command
+- [ ] revoke command
+- [ ] get/query commands
+
+## Test Results
+```
+======================== 17 passed, 1 skipped in 12.24s ========================
+```
+
+**Current Focus**: Ready for Step 4 (revoke functionality) or Step 5 (SDK client)
 
 ## License
 
