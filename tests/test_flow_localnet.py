@@ -7,6 +7,7 @@ Marked with @pytest.mark.localnet for conditional execution.
 from __future__ import annotations
 
 import pytest
+from collections.abc import Generator
 from beaker.client import ApplicationClient
 from algosdk.v2client.algod import AlgodClient
 from algosdk.kmd import KMDClient
@@ -30,7 +31,7 @@ def algod_client() -> AlgodClient:
 
 
 @pytest.fixture
-def localnet_signer(algod_client: AlgodClient) -> tuple[AccountTransactionSigner, str]:
+def localnet_signer(algod_client: AlgodClient) -> Generator[tuple[AccountTransactionSigner, str], None, None]:
     """Ephemeral funded signer backed by KMD; closed out after test.
 
     - Picks richest KMD account as funder
@@ -55,7 +56,7 @@ def localnet_signer(algod_client: AlgodClient) -> tuple[AccountTransactionSigner
                 raise Exception("No accounts found in LocalNet wallet")
 
             # Choose richest as funder
-            richest = max(addrs, key=lambda a: algod_client.account_info(a)["amount"])  # type: ignore[index]
+            richest = max(addrs, key=lambda a: algod_client.account_info(a)["amount"])  # type: ignore[call-overload]
             funder_sk = kmd.export_key(handle, "", richest)
 
             # Create ephemeral account
@@ -114,7 +115,7 @@ def deployed_client(algod_client: AlgodClient, localnet_signer: tuple[AccountTra
             handle = kmd.init_wallet_handle(wallet["id"], "")
             try:
                 addrs = kmd.list_keys(handle)
-                richest = max(addrs, key=lambda a: algod_client.account_info(a)["amount"])  # type: ignore[index]
+                richest = max(addrs, key=lambda a: algod_client.account_info(a)["amount"])  # type: ignore[call-overload]
                 funder_sk = kmd.export_key(handle, "", richest)
                 sp = algod_client.suggested_params()
                 # 1 Algo should comfortably cover one small box
@@ -171,7 +172,7 @@ def test_create_schema_success(deployed_client: ApplicationClient, algod_client:
     
     # Verify box was created and contains expected data
     box_key = b"schema:" + schema_id
-    box_value = algod_client.application_box_by_name(deployed_client.app_id, box_key)["value"]
+    box_value = algod_client.application_box_by_name(deployed_client.app_id, box_key)["value"]  # type: ignore[call-overload]
     
     # Expected format: owner(32B) + flags(8B) + uri
     import base64
@@ -245,7 +246,7 @@ def test_create_schema_box_storage(deployed_client: ApplicationClient, algod_cli
     
     # Read box and verify format
     box_key = b"schema:" + schema_id
-    box_value = algod_client.application_box_by_name(deployed_client.app_id, box_key)["value"]
+    box_value = algod_client.application_box_by_name(deployed_client.app_id, box_key)["value"]  # type: ignore[call-overload]
     
     import base64
     from algosdk import encoding
@@ -314,7 +315,7 @@ def test_grant_attester_only_owner(deployed_client: ApplicationClient, algod_cli
     handle = kmd.init_wallet_handle(wallet["id"], "")
     try:
         addrs = kmd.list_keys(handle)
-        richest = max(addrs, key=lambda a: algod_client.account_info(a)["amount"])  # type: ignore[index]
+        richest = max(addrs, key=lambda a: algod_client.account_info(a)["amount"])  # type: ignore[call-overload]
         funder_sk = kmd.export_key(handle, "", richest)
         ep_sk, ep_addr = account.generate_account()
         sp = algod_client.suggested_params()
@@ -369,7 +370,7 @@ def test_grant_attester_idempotent(deployed_client: ApplicationClient, algod_cli
 
     # Verify only one 32B entry exists
     import base64
-    data_b64 = algod_client.application_box_by_name(deployed_client.app_id, b"attesters:" + schema_id)["value"]
+    data_b64 = algod_client.application_box_by_name(deployed_client.app_id, b"attesters:" + schema_id)["value"]  # type: ignore[call-overload]
     raw = base64.b64decode(data_b64)
     assert len(raw) == 32
     assert raw == attester_pk
@@ -445,7 +446,7 @@ def test_attest_happy_path(deployed_client: ApplicationClient, algod_client: Alg
     transaction.wait_for_confirmation(algod_client, result.tx_id, 4)
     
     # Verify attestation box was created with correct format
-    box_value = algod_client.application_box_by_name(deployed_client.app_id, b"att:" + att_id)["value"]
+    box_value = algod_client.application_box_by_name(deployed_client.app_id, b"att:" + att_id)["value"]  # type: ignore[call-overload]
     import base64
     data = base64.b64decode(box_value)
     
