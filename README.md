@@ -83,13 +83,15 @@ aas revoke attestation_id_here --reason 42
 aas get attestation_id_here
 ```
 
+> **Note**: CLI commands currently perform validation and argument parsing but do not submit real blockchain transactions. Transaction submission will be implemented in a future version. For actual blockchain operations, use the LocalNet integration tests (`pytest -m localnet`).
+
 ## Architecture
 
 ### Smart Contract (PyTeal + Beaker)
 - `create_schema(schema_id, owner, uri, flags)`: Register new schema ✅ 
 - `grant_attester(schema_id, attester_pk)`: Grant attestation permissions ✅
 - `attest(schema_id, subject_addr, claim_hash_32, nonce_32, sig_64, cid, attester_pk)`: Create attestation with ed25519 signature verification ✅
-- `revoke(att_id, reason)`: Revoke existing attestation ⏳
+- `revoke(att_id, reason)`: Revoke existing attestation ✅
 
 ### Box Storage Format
 - `schema:<schema_id>` → owner(32B) + flags(8B) + uri(variable)
@@ -120,11 +122,11 @@ This project follows TDD (Test-Driven Development):
 aas/
   contracts/aas.py          # Beaker Router with PyTeal smart contract
   sdk/
-     aas.py                # Core SDK (TODO: high-level client)
+     aas.py                # Core SDK client (interface complete, transaction submission pending)
      models.py             # Pydantic models for type safety  
      hashing.py            # Crypto utilities (JSON hashing, ed25519)
   cli/
-     main.py               # Typer CLI (TODO: implement commands)
+     main.py               # Typer CLI with all commands (pending real transaction submission)
   scripts/
      deploy.py             # Deployment script (TODO: implement)
 tests/
@@ -180,6 +182,7 @@ tests/
 - [x] revoke command (attestation ID + optional reason)
 - [x] get command (attestation lookup by ID)
 - [x] Comprehensive CLI tests (argument parsing, validation, mocking)
+- [x] Explicit error handling for unimplemented blockchain transaction submission
 
 ## Test Results
 ```

@@ -50,9 +50,11 @@ class AASClient:
     
     def _submit_schema_creation(self, schema_id: str, owner_addr: str, uri: str, flags: int) -> str:
         """Submit schema creation transaction."""
-        # This would compose and submit the create_schema transaction
-        # For now, return the schema_id as proof of concept
-        return schema_id
+        raise NotImplementedError(
+            "Real blockchain transaction submission not yet implemented. "
+            "The CLI currently validates inputs but does not submit to blockchain. "
+            "Use LocalNet integration tests (pytest -m localnet) for actual blockchain operations."
+        )
     
     def grant_attester(self, schema_id: str, attester_pk: str) -> bool:
         """Grant attester permission for schema."""
@@ -65,8 +67,11 @@ class AASClient:
     
     def _submit_attester_grant(self, schema_id: str, attester_pk: str) -> bool:
         """Submit attester grant transaction."""
-        # This would compose and submit the grant_attester transaction
-        return True
+        raise NotImplementedError(
+            "Real blockchain transaction submission not yet implemented. "
+            "The CLI currently validates inputs but does not submit to blockchain. "
+            "Use LocalNet integration tests (pytest -m localnet) for actual blockchain operations."
+        )
     
     def attest(self, schema_id: str, subject_addr: str, claim_data: dict, nonce: str, signature: str, attester_pk: str, cid: str = "") -> str:
         """Create attestation and return attestation ID."""
@@ -81,8 +86,11 @@ class AASClient:
     
     def _submit_attestation(self, schema_id: str, subject_addr: str, claim_hash: str, nonce: str, signature: str, attester_pk: str, cid: str) -> None:
         """Submit attestation transaction."""
-        # This would compose and submit the attest transaction
-        pass
+        raise NotImplementedError(
+            "Real blockchain transaction submission not yet implemented. "
+            "The CLI currently validates inputs but does not submit to blockchain. "
+            "Use LocalNet integration tests (pytest -m localnet) for actual blockchain operations."
+        )
     
     def revoke(self, attestation_id: str, reason: int = 0) -> bool:
         """Revoke existing attestation."""
@@ -95,8 +103,11 @@ class AASClient:
     
     def _submit_revocation(self, attestation_id: str, reason: int) -> bool:
         """Submit revocation transaction."""
-        # This would compose and submit the revoke transaction
-        return True
+        raise NotImplementedError(
+            "Real blockchain transaction submission not yet implemented. "
+            "The CLI currently validates inputs but does not submit to blockchain. "
+            "Use LocalNet integration tests (pytest -m localnet) for actual blockchain operations."
+        )
     
     def verify_attestation(self, attestation_id: str) -> Attestation | None:
         """Read attestation from box storage and return structured data."""

@@ -52,11 +52,10 @@ def test_create_schema_validation() -> None:
     with pytest.raises(ValueError, match="App ID not set"):
         client.create_schema({"type": "object"}, "owner_addr", "uri")
     
-    # Should work with app_id set
+    # Should fail with NotImplementedError (transaction submission not implemented)
     client.set_app_id(123)
-    schema_id = client.create_schema({"type": "object"}, "owner_addr", "uri")
-    assert isinstance(schema_id, str)
-    assert len(schema_id) == 64  # SHA256 hex length
+    with pytest.raises(NotImplementedError, match="Real blockchain transaction submission not yet implemented"):
+        client.create_schema({"type": "object"}, "owner_addr", "uri")
 
 
 def test_grant_attester_validation() -> None:
@@ -76,9 +75,9 @@ def test_grant_attester_validation() -> None:
     with pytest.raises(ValueError, match="Schema ID and attester public key required"):
         client.grant_attester("schema_id", "")
     
-    # Should work with valid parameters
-    result = client.grant_attester("schema_id", "attester_pk")
-    assert result is True
+    # Should fail with NotImplementedError (transaction submission not implemented)
+    with pytest.raises(NotImplementedError, match="Real blockchain transaction submission not yet implemented"):
+        client.grant_attester("schema_id", "attester_pk")
 
 
 def test_attest_validation() -> None:
@@ -89,11 +88,10 @@ def test_attest_validation() -> None:
     with pytest.raises(ValueError, match="App ID not set"):
         client.attest("schema_id", "subject", {"data": "test"}, "nonce", "sig", "pk")
     
-    # Should work with app_id set
+    # Should fail with NotImplementedError (transaction submission not implemented)
     client.set_app_id(123)
-    attestation_id = client.attest("schema_id", "subject", {"data": "test"}, "nonce", "sig", "pk")
-    assert isinstance(attestation_id, str)
-    assert len(attestation_id) == 64  # SHA256 hex length
+    with pytest.raises(NotImplementedError, match="Real blockchain transaction submission not yet implemented"):
+        client.attest("schema_id", "subject", {"data": "test"}, "nonce", "sig", "pk")
 
 
 def test_revoke_validation() -> None:
@@ -110,9 +108,9 @@ def test_revoke_validation() -> None:
     with pytest.raises(ValueError, match="Attestation ID required"):
         client.revoke("")
     
-    # Should work with valid parameters
-    result = client.revoke("att_id")
-    assert result is True
+    # Should fail with NotImplementedError (transaction submission not implemented)
+    with pytest.raises(NotImplementedError, match="Real blockchain transaction submission not yet implemented"):
+        client.revoke("att_id")
 
 
 def test_verify_attestation_validation() -> None:

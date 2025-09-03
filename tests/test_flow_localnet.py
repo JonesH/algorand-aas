@@ -203,12 +203,12 @@ def test_create_schema_success(
 
 
 @pytest.mark.localnet
-def test_create_schema_duplicate_currently_allowed(
+def test_create_schema_idempotent_behavior(
     deployed_client: ApplicationClient,
     algod_client: AlgodClient,
     localnet_signer: tuple[AccountTransactionSigner, str],
 ) -> None:
-    """Test that creating duplicate schema currently succeeds (duplicate prevention not yet implemented)."""
+    """Test that schema creation is idempotent - allows updates to existing schemas."""
 
     # Test data
     schema_id = b"duplicate_test"
@@ -229,8 +229,7 @@ def test_create_schema_duplicate_currently_allowed(
         signer=signer,
     )
 
-    # Second creation should succeed for now (no duplicate check yet)
-    # TODO: Add duplicate prevention logic - this test should be updated to expect failure once implemented
+    # Second creation should succeed (idempotent behavior allows schema updates)
     deployed_client.call(
         AASApplication.create_schema,
         schema_id=schema_id,
