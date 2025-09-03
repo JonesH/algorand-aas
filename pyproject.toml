@@ -1,0 +1,28 @@
+[project]
+name = "algorand-aas"
+version = "0.1.0"
+description = "Algorand Attestation Service - Schema Registry + Attestation Writer"
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = [
+    "algokit>=2.8.0",
+    "beaker-pyteal",
+    "pyteal", 
+    "algosdk",
+    "pynacl",
+    "typer[all]",
+    "pydantic>=2.0",
+    "pydantic-settings",
+    "rich"
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest",
+    "mypy", 
+    "ruff",
+    "pre-commit"
+]
+
+[project.scripts]
+aas = "aas.cli.main:app"
