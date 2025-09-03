@@ -83,15 +83,16 @@ def test_grant_attester_validation() -> None:
 def test_attest_validation() -> None:
     """Test attestation creation validation."""
     client = AASClient(Mock())
+    valid_addr = "76N5VQKVRFX5K3SMKJVGFZDPALS5MSTNXJBGPP3CWMA67VP37XDZDGBVSY"
     
     # Should fail without app_id set
     with pytest.raises(ValueError, match="App ID not set"):
-        client.attest("schema_id", "subject", {"data": "test"}, "nonce", "sig", "pk")
+        client.attest("schema_id", valid_addr, {"data": "test"}, "nonce", "sig", "pk")
     
     # Should fail without signer set
     client.set_app_id(123)
     with pytest.raises(ValueError, match="Signer not set"):
-        client.attest("schema_id", "subject", {"data": "test"}, "nonce", "sig", "pk")
+        client.attest("schema_id", valid_addr, {"data": "test"}, "nonce", "sig", "pk")
 
 
 def test_revoke_validation() -> None:
