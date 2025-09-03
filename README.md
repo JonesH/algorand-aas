@@ -129,7 +129,7 @@ tests/
 
 ## Implementation Status
 
-**✅ Steps 1-3 Complete**: Core attestation functionality implemented
+**✅ Steps 1-4 Complete**: Core attestation functionality with revocation implemented
 
 ### Step 1: Schema Registry ✅
 - [x] `create_schema` contract method with box storage
@@ -151,10 +151,11 @@ tests/
 - [x] Duplicate prevention and box storage
 - [x] Comprehensive test coverage (happy path, unauthorized, duplicates, invalid signatures)
 
-### Step 4: Attestation Revocation ⏳
-- [ ] `revoke` contract method  
-- [ ] Revocation reason tracking
-- [ ] Status updates in attestation boxes
+### Step 4: Attestation Revocation ✅
+- [x] `revoke` contract method with validation and authorization
+- [x] Revocation reason tracking in 8-byte suffix
+- [x] Status updates from "A" to "R" in attestation boxes
+- [x] Comprehensive test coverage (happy path, nonexistent, edge cases)
 
 ### Step 5: Python SDK ⏳
 - [x] Core hashing utilities (canonical JSON, deterministic IDs)
@@ -174,10 +175,10 @@ tests/
 
 ## Test Results
 ```
-======================== 17 passed, 1 skipped in 12.24s ========================
+======================== 19 passed, 3 skipped in 20.53s ========================
 ```
 
-**Current Focus**: Ready for Step 4 (revoke functionality) or Step 5 (SDK client)
+**Current Focus**: Ready for Step 5 (SDK client wrapper) or Step 6 (CLI interface)
 
 ## License
 
