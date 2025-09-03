@@ -99,6 +99,29 @@ class AASApplication(Application):
             BoxPut(att_key.load(), att_val.load())
         )
     
+    def _revoke_attestation(self, att_id_bytes, reason_u64):
+        """Revoke attestation by updating status to 'R' in place."""
+        att_key, cur_val, new_val = (
+            ScratchVar(TealType.bytes),
+            ScratchVar(TealType.bytes), 
+            ScratchVar(TealType.bytes)
+        )
+        att_bg = BoxGet(att_key.load())
+        return Seq(
+            att_key.store(Concat(Bytes("att:"), att_id_bytes)),
+            att_bg,
+            Assert(att_bg.hasValue()),
+            cur_val.store(att_bg.value()),
+            Assert(Extract(cur_val.load(), Int(0), Int(1)) == Bytes("base64", "QQ==")),  # Must be "A" (active)
+            # Replace status byte with "R" and keep same size by overwriting last 8 bytes with reason
+            new_val.store(Concat(
+                Bytes("base64", "Ug=="),  # "R" = status Revoked (1 byte)
+                Extract(cur_val.load(), Int(1), Len(cur_val.load()) - Int(9)),  # Keep middle data 
+                Itob(reason_u64)  # Replace last 8 bytes with revocation reason
+            )),
+            BoxPut(att_key.load(), new_val.load())
+        )
+    
     @external
     def create_schema(
         self,
@@ -219,6 +242,38 @@ class AASApplication(Application):
             self._store_attestation(att_id.load(), subject_addr.get(), schema_id.get(), cid.get()),
             
             Log(Concat(Bytes("Attested:"), att_id.load())),
+        )
+
+    @external
+    def revoke(
+        self,
+        att_id: abi.DynamicBytes,
+        reason: abi.Uint64,
+    ):
+        """Revoke existing attestation.
+        
+        Authorization: only the attestation subject may revoke.
+        Subject address is stored in the attestation box value.
+        """
+        att_key, cur_val = ScratchVar(TealType.bytes), ScratchVar(TealType.bytes)
+        att_bg = BoxGet(att_key.load())
+        return Seq(
+            # Validate attestation ID length
+            Assert(Len(att_id.get()) == Int(32)),
+            # Load attestation to check status and subject authorization
+            att_key.store(Concat(Bytes("att:"), att_id.get())),
+            att_bg,
+            Assert(att_bg.hasValue()),
+            cur_val.store(att_bg.value()),
+            # Must be active ("A") before revocation
+            Assert(Extract(cur_val.load(), Int(0), Int(1)) == Bytes("base64", "QQ==")),
+            # Authorize: sender must be the subject
+            Assert(Txn.sender() == Extract(cur_val.load(), Int(1), Int(32))),
+            
+            # Revoke attestation
+            self._revoke_attestation(att_id.get(), reason.get()),
+            
+            Log(Concat(Bytes("Revoked:"), att_id.get())),
         )
 
 

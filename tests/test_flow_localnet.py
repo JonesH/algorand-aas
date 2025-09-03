@@ -6,15 +6,17 @@ Marked with @pytest.mark.localnet for conditional execution.
 
 from __future__ import annotations
 
-import pytest
 from collections.abc import Generator
-from beaker.client import ApplicationClient
-from algosdk.v2client.algod import AlgodClient
-from algosdk.kmd import KMDClient
-from algosdk.atomic_transaction_composer import AccountTransactionSigner
+
+import pytest
 from algosdk import account, transaction
+from algosdk.atomic_transaction_composer import AccountTransactionSigner
+from algosdk.kmd import KMDClient
 from algosdk.logic import get_application_address
-from aas.contracts.aas import get_app, AASApplication
+from algosdk.v2client.algod import AlgodClient
+from beaker.client import ApplicationClient
+
+from aas.contracts.aas import AASApplication, get_app
 
 
 @pytest.fixture(scope="session")
@@ -22,16 +24,23 @@ def algod_client() -> AlgodClient:
     """LocalNet Algod client fixture."""
     try:
         # LocalNet Algod typically uses this token
-        client = AlgodClient("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "http://localhost:4001")
+        client = AlgodClient(
+            "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "http://localhost:4001",
+        )
         # Test connection
         client.status()
         return client
     except Exception as e:
-        pytest.skip(f"LocalNet Algod connection failed: {e}. Please ensure LocalNet is running with 'algokit localnet start'")
+        pytest.skip(
+            f"LocalNet Algod connection failed: {e}. Please ensure LocalNet is running with 'algokit localnet start'"
+        )
 
 
 @pytest.fixture
-def localnet_signer(algod_client: AlgodClient) -> Generator[tuple[AccountTransactionSigner, str], None, None]:
+def localnet_signer(
+    algod_client: AlgodClient,
+) -> Generator[tuple[AccountTransactionSigner, str], None, None]:
     """Ephemeral funded signer backed by KMD; closed out after test.
 
     - Picks richest KMD account as funder
@@ -90,9 +99,11 @@ def localnet_signer(algod_client: AlgodClient) -> Generator[tuple[AccountTransac
 
 
 @pytest.fixture
-def deployed_client(algod_client: AlgodClient, localnet_signer: tuple[AccountTransactionSigner, str]) -> ApplicationClient:
+def deployed_client(
+    algod_client: AlgodClient, localnet_signer: tuple[AccountTransactionSigner, str]
+) -> ApplicationClient:
     """Deploy AAS contract and return configured client.
-    
+
     Returns fresh deployment for each test.
     """
     signer, address = localnet_signer
@@ -131,10 +142,10 @@ def deployed_client(algod_client: AlgodClient, localnet_signer: tuple[AccountTra
     return client
 
 
-@pytest.mark.localnet  
+@pytest.mark.localnet
 def test_localnet_connectivity(algod_client: AlgodClient) -> None:
     """Test basic LocalNet connectivity.
-    
+
     This test requires AlgoKit LocalNet running:
     algokit localnet start
     """
@@ -144,15 +155,19 @@ def test_localnet_connectivity(algod_client: AlgodClient) -> None:
 
 
 @pytest.mark.localnet
-def test_create_schema_success(deployed_client: ApplicationClient, algod_client: AlgodClient, localnet_signer: tuple[AccountTransactionSigner, str]) -> None:
+def test_create_schema_success(
+    deployed_client: ApplicationClient,
+    algod_client: AlgodClient,
+    localnet_signer: tuple[AccountTransactionSigner, str],
+) -> None:
     """Test successful schema creation."""
-    
+
     # Test data
     schema_id = b"test_schema_001"
     owner = "7ZUECA7HFLZTXENRV24SHLU4AVPUTMTTDUFUBNBD64C73F3UHRTHAIOF6Q"
     uri = "https://example.com/schema.json"
     flags = 1
-    
+
     # Call create_schema with boxes parameter
     signer, address = localnet_signer
     box_key = b"schema:" + schema_id
@@ -163,38 +178,44 @@ def test_create_schema_success(deployed_client: ApplicationClient, algod_client:
         uri=uri,
         flags=flags,
         boxes=[(deployed_client.app_id, box_key)],
-        signer=signer
+        signer=signer,
     )
-    
+
     # Verify transaction succeeded (confirm by tx id)
     tx_info = transaction.wait_for_confirmation(algod_client, result.tx_id, 4)
     assert tx_info.get("confirmed-round", 0) > 0
-    
+
     # Verify box was created and contains expected data
     box_key = b"schema:" + schema_id
     box_value = algod_client.application_box_by_name(deployed_client.app_id, box_key)["value"]  # type: ignore[call-overload]
-    
+
     # Expected format: owner(32B) + flags(8B) + uri
     import base64
+
     from algosdk import encoding
+
     owner_bytes = encoding.decode_address(owner)
-    expected_flags = flags.to_bytes(8, 'big')
-    expected_uri = uri.encode('utf-8')
+    expected_flags = flags.to_bytes(8, "big")
+    expected_uri = uri.encode("utf-8")
     expected_value = owner_bytes + expected_flags + expected_uri
-    
+
     assert base64.b64decode(box_value) == expected_value
 
 
 @pytest.mark.localnet
-def test_create_schema_duplicate_fails(deployed_client: ApplicationClient, algod_client: AlgodClient, localnet_signer: tuple[AccountTransactionSigner, str]) -> None:
+def test_create_schema_duplicate_fails(
+    deployed_client: ApplicationClient,
+    algod_client: AlgodClient,
+    localnet_signer: tuple[AccountTransactionSigner, str],
+) -> None:
     """Test that creating duplicate schema fails."""
-    
+
     # Test data
     schema_id = b"duplicate_test"
     owner = "7ZUECA7HFLZTXENRV24SHLU4AVPUTMTTDUFUBNBD64C73F3UHRTHAIOF6Q"
     uri = "https://example.com/schema.json"
     flags = 1
-    
+
     # First creation should succeed
     signer, address = localnet_signer
     box_key = b"schema:" + schema_id
@@ -205,9 +226,9 @@ def test_create_schema_duplicate_fails(deployed_client: ApplicationClient, algod
         uri=uri,
         flags=flags,
         boxes=[(deployed_client.app_id, box_key)],
-        signer=signer
+        signer=signer,
     )
-    
+
     # Second creation should succeed for now (no duplicate check yet)
     # TODO: Add duplicate prevention logic
     deployed_client.call(
@@ -217,20 +238,24 @@ def test_create_schema_duplicate_fails(deployed_client: ApplicationClient, algod
         uri=uri,
         flags=flags,
         boxes=[(deployed_client.app_id, box_key)],
-        signer=signer
+        signer=signer,
     )
 
 
 @pytest.mark.localnet
-def test_create_schema_box_storage(deployed_client: ApplicationClient, algod_client: AlgodClient, localnet_signer: tuple[AccountTransactionSigner, str]) -> None:
+def test_create_schema_box_storage(
+    deployed_client: ApplicationClient,
+    algod_client: AlgodClient,
+    localnet_signer: tuple[AccountTransactionSigner, str],
+) -> None:
     """Test schema box storage format."""
-    
+
     # Test with different data
     schema_id = b"storage_test_schema"
     owner = "7ZUECA7HFLZTXENRV24SHLU4AVPUTMTTDUFUBNBD64C73F3UHRTHAIOF6Q"
     uri = "test-uri"
     flags = 42
-    
+
     # Create schema
     signer, address = localnet_signer
     box_key = b"schema:" + schema_id
@@ -241,34 +266,40 @@ def test_create_schema_box_storage(deployed_client: ApplicationClient, algod_cli
         uri=uri,
         flags=flags,
         boxes=[(deployed_client.app_id, box_key)],
-        signer=signer
+        signer=signer,
     )
-    
+
     # Read box and verify format
     box_key = b"schema:" + schema_id
     box_value = algod_client.application_box_by_name(deployed_client.app_id, box_key)["value"]  # type: ignore[call-overload]
-    
+
     import base64
+
     from algosdk import encoding
+
     data = base64.b64decode(box_value)
-    
+
     # Parse: owner(32B) + flags(8B) + uri(rest)
     stored_owner = data[:32]
     stored_flags = data[32:40]
     stored_uri = data[40:]
-    
+
     # Verify each component
     expected_owner = encoding.decode_address(owner)
-    expected_flags = flags.to_bytes(8, 'big')
-    expected_uri = uri.encode('utf-8')
-    
+    expected_flags = flags.to_bytes(8, "big")
+    expected_uri = uri.encode("utf-8")
+
     assert stored_owner == expected_owner
     assert stored_flags == expected_flags
     assert stored_uri == expected_uri
 
 
 @pytest.mark.localnet
-def test_grant_attester_only_owner(deployed_client: ApplicationClient, algod_client: AlgodClient, localnet_signer: tuple[AccountTransactionSigner, str]) -> None:
+def test_grant_attester_only_owner(
+    deployed_client: ApplicationClient,
+    algod_client: AlgodClient,
+    localnet_signer: tuple[AccountTransactionSigner, str],
+) -> None:
     """Only schema owner can grant attester."""
     signer, owner_addr = localnet_signer
 
@@ -306,11 +337,14 @@ def test_grant_attester_only_owner(deployed_client: ApplicationClient, algod_cli
     # Non-owner should be denied
     # Create another ephemeral signer
     from algosdk.kmd import KMDClient
+
     kmd = KMDClient(
         "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
         "http://localhost:4002",
     )
-    wallet = next((w for w in kmd.list_wallets() if w["name"] == "unencrypted-default-wallet"), None)
+    wallet = next(
+        (w for w in kmd.list_wallets() if w["name"] == "unencrypted-default-wallet"), None
+    )
     assert wallet, "LocalNet wallet missing"
     handle = kmd.init_wallet_handle(wallet["id"], "")
     try:
@@ -319,7 +353,9 @@ def test_grant_attester_only_owner(deployed_client: ApplicationClient, algod_cli
         funder_sk = kmd.export_key(handle, "", richest)
         ep_sk, ep_addr = account.generate_account()
         sp = algod_client.suggested_params()
-        txid = algod_client.send_transaction(transaction.PaymentTxn(richest, sp, ep_addr, 2_000_000).sign(funder_sk))
+        txid = algod_client.send_transaction(
+            transaction.PaymentTxn(richest, sp, ep_addr, 2_000_000).sign(funder_sk)
+        )
         transaction.wait_for_confirmation(algod_client, txid, 4)
         other_signer = AccountTransactionSigner(ep_sk)
 
@@ -337,7 +373,11 @@ def test_grant_attester_only_owner(deployed_client: ApplicationClient, algod_cli
 
 
 @pytest.mark.localnet
-def test_grant_attester_idempotent(deployed_client: ApplicationClient, algod_client: AlgodClient, localnet_signer: tuple[AccountTransactionSigner, str]) -> None:
+def test_grant_attester_idempotent(
+    deployed_client: ApplicationClient,
+    algod_client: AlgodClient,
+    localnet_signer: tuple[AccountTransactionSigner, str],
+) -> None:
     """grant_attester should be idempotent for the same key."""
     signer, owner_addr = localnet_signer
     schema_id = b"idempotent_schema"
@@ -370,14 +410,21 @@ def test_grant_attester_idempotent(deployed_client: ApplicationClient, algod_cli
 
     # Verify only one 32B entry exists
     import base64
-    data_b64 = algod_client.application_box_by_name(deployed_client.app_id, b"attesters:" + schema_id)["value"]  # type: ignore[call-overload]
+
+    data_b64 = algod_client.application_box_by_name(
+        deployed_client.app_id, b"attesters:" + schema_id
+    )["value"]  # type: ignore[call-overload]
     raw = base64.b64decode(data_b64)
     assert len(raw) == 32
     assert raw == attester_pk
 
 
 @pytest.mark.localnet
-def test_attest_happy_path(deployed_client: ApplicationClient, algod_client: AlgodClient, localnet_signer: tuple[AccountTransactionSigner, str]) -> None:
+def test_attest_happy_path(
+    deployed_client: ApplicationClient,
+    algod_client: AlgodClient,
+    localnet_signer: tuple[AccountTransactionSigner, str],
+) -> None:
     """Test successful attestation with valid signature from authorized attester."""
     signer, owner_addr = localnet_signer
     schema_id = b"attest_test_schema"
@@ -399,6 +446,7 @@ def test_attest_happy_path(deployed_client: ApplicationClient, algod_client: Alg
 
     # Generate ed25519 keypair for attester
     from nacl.signing import SigningKey
+
     attester_sk = SigningKey.generate()
     attester_pk = bytes(attester_sk.verify_key)
 
@@ -419,7 +467,9 @@ def test_attest_happy_path(deployed_client: ApplicationClient, algod_client: Alg
 
     # Build canonical message and sign
     import hashlib
+
     from algosdk import encoding
+
     subject_bytes = encoding.decode_address(subject_addr)
     message = schema_id + subject_bytes + claim_hash + nonce
     signature = bytes(attester_sk.sign(message).signature)
@@ -441,25 +491,32 @@ def test_attest_happy_path(deployed_client: ApplicationClient, algod_client: Alg
         boxes=[schema_box, att_box, att_storage_box],
         signer=signer,
     )
-    
+
     # Verify transaction succeeded
     transaction.wait_for_confirmation(algod_client, result.tx_id, 4)
-    
+
     # Verify attestation box was created with correct format
-    box_value = algod_client.application_box_by_name(deployed_client.app_id, b"att:" + att_id)["value"]  # type: ignore[call-overload]
+    box_value = algod_client.application_box_by_name(deployed_client.app_id, b"att:" + att_id)[
+        "value"
+    ]  # type: ignore[call-overload]
     import base64
+
     data = base64.b64decode(box_value)
-    
+
     # Verify format: status(1B) + subject(32B) + schema_id_len(8B) + schema_id + cid
     assert data[0:1] == b"A"  # Status OK
     assert data[1:33] == subject_bytes  # Subject address
-    schema_id_len = int.from_bytes(data[33:41], 'big')
-    assert data[41:41+schema_id_len] == schema_id
-    assert data[41+schema_id_len:] == cid.encode('utf-8')
+    schema_id_len = int.from_bytes(data[33:41], "big")
+    assert data[41 : 41 + schema_id_len] == schema_id
+    assert data[41 + schema_id_len :] == cid.encode("utf-8")
 
 
 @pytest.mark.localnet
-def test_attest_unauthorized_attester(deployed_client: ApplicationClient, algod_client: AlgodClient, localnet_signer: tuple[AccountTransactionSigner, str]) -> None:
+def test_attest_unauthorized_attester(
+    deployed_client: ApplicationClient,
+    algod_client: AlgodClient,
+    localnet_signer: tuple[AccountTransactionSigner, str],
+) -> None:
     """Test that unauthorized attester cannot create attestations."""
     signer, owner_addr = localnet_signer
     schema_id = b"unauthorized_test"
@@ -481,6 +538,7 @@ def test_attest_unauthorized_attester(deployed_client: ApplicationClient, algod_
 
     # Generate unauthorized attester
     from nacl.signing import SigningKey
+
     unauthorized_sk = SigningKey.generate()
     unauthorized_pk = bytes(unauthorized_sk.verify_key)
 
@@ -492,7 +550,9 @@ def test_attest_unauthorized_attester(deployed_client: ApplicationClient, algod_
 
     # Build message and sign with unauthorized key
     import hashlib
+
     from algosdk import encoding
+
     subject_bytes = encoding.decode_address(subject_addr)
     message = schema_id + subject_bytes + claim_hash + nonce
     signature = bytes(unauthorized_sk.sign(message).signature)
@@ -517,7 +577,11 @@ def test_attest_unauthorized_attester(deployed_client: ApplicationClient, algod_
 
 
 @pytest.mark.localnet
-def test_attest_duplicate_fails(deployed_client: ApplicationClient, algod_client: AlgodClient, localnet_signer: tuple[AccountTransactionSigner, str]) -> None:
+def test_attest_duplicate_fails(
+    deployed_client: ApplicationClient,
+    algod_client: AlgodClient,
+    localnet_signer: tuple[AccountTransactionSigner, str],
+) -> None:
     """Test that duplicate attestation IDs are rejected."""
     signer, owner_addr = localnet_signer
     schema_id = b"duplicate_att_test"
@@ -538,6 +602,7 @@ def test_attest_duplicate_fails(deployed_client: ApplicationClient, algod_client
     )
 
     from nacl.signing import SigningKey
+
     attester_sk = SigningKey.generate()
     attester_pk = bytes(attester_sk.verify_key)
 
@@ -556,7 +621,9 @@ def test_attest_duplicate_fails(deployed_client: ApplicationClient, algod_client
     cid = "QmDuplicate"
 
     import hashlib
+
     from algosdk import encoding
+
     subject_bytes = encoding.decode_address(subject_addr)
     message = schema_id + subject_bytes + claim_hash + nonce
     signature = bytes(attester_sk.sign(message).signature)
@@ -578,7 +645,7 @@ def test_attest_duplicate_fails(deployed_client: ApplicationClient, algod_client
         signer=signer,
     )
     transaction.wait_for_confirmation(algod_client, result.tx_id, 4)
-    
+
     # Second identical call should fail (duplicate)
     with pytest.raises(Exception):
         deployed_client.call(
@@ -596,7 +663,11 @@ def test_attest_duplicate_fails(deployed_client: ApplicationClient, algod_client
 
 
 @pytest.mark.localnet
-def test_attest_invalid_signature(deployed_client: ApplicationClient, algod_client: AlgodClient, localnet_signer: tuple[AccountTransactionSigner, str]) -> None:
+def test_attest_invalid_signature(
+    deployed_client: ApplicationClient,
+    algod_client: AlgodClient,
+    localnet_signer: tuple[AccountTransactionSigner, str],
+) -> None:
     """Test that invalid signatures are rejected."""
     signer, owner_addr = localnet_signer
     schema_id = b"invalid_sig_test"
@@ -617,6 +688,7 @@ def test_attest_invalid_signature(deployed_client: ApplicationClient, algod_clie
     )
 
     from nacl.signing import SigningKey
+
     attester_sk = SigningKey.generate()
     attester_pk = bytes(attester_sk.verify_key)
 
@@ -635,7 +707,9 @@ def test_attest_invalid_signature(deployed_client: ApplicationClient, algod_clie
     cid = "QmInvalid"
 
     import hashlib
+
     from algosdk import encoding
+
     subject_bytes = encoding.decode_address(subject_addr)
     message = schema_id + subject_bytes + claim_hash + nonce
 
@@ -661,10 +735,335 @@ def test_attest_invalid_signature(deployed_client: ApplicationClient, algod_clie
         )
 
 
-@pytest.mark.localnet  
+@pytest.mark.localnet
+def test_revoke_attestation_success(
+    deployed_client: ApplicationClient,
+    algod_client: AlgodClient,
+    localnet_signer: tuple[AccountTransactionSigner, str],
+) -> None:
+    """Test successful attestation revocation."""
+    signer, owner_addr = localnet_signer
+    schema_id = b"revoke_success_test"
+    uri = "revoke-test-schema"
+    flags = 1
+    schema_box = (deployed_client.app_id, b"schema:" + schema_id)
+    att_box = (deployed_client.app_id, b"attesters:" + schema_id)
+
+    # Create schema
+    deployed_client.call(
+        AASApplication.create_schema,
+        schema_id=schema_id,
+        owner=owner_addr,
+        uri=uri,
+        flags=flags,
+        boxes=[schema_box],
+        signer=signer,
+    )
+
+    # Generate ed25519 keypair for attester (copy exact pattern from working test)
+    from nacl.signing import SigningKey
+
+    attester_sk = SigningKey.generate()
+    attester_pk = bytes(attester_sk.verify_key)
+
+    # Grant attester
+    deployed_client.call(
+        AASApplication.grant_attester,
+        schema_id=schema_id,
+        attester_pk=attester_pk,
+        boxes=[schema_box, att_box],
+        signer=signer,
+    )
+
+    # Prepare attestation data (copy exact pattern)
+    subject_addr = owner_addr  # Use owner as subject for simplicity
+    claim_hash = b"R" * 32  # 32-byte claim hash
+    nonce = b"V" * 32  # 32-byte nonce
+    cid = "QmRevoke123"
+
+    # Build canonical message and sign (copy exact pattern)
+    import hashlib
+
+    from algosdk import encoding
+
+    subject_bytes = encoding.decode_address(subject_addr)
+    message = schema_id + subject_bytes + claim_hash + nonce
+    signature = bytes(attester_sk.sign(message).signature)
+
+    # Generate attestation ID
+    att_id = hashlib.sha256(message).digest()
+    att_storage_box = (deployed_client.app_id, b"att:" + att_id)
+
+    # Create attestation
+    deployed_client.call(
+        AASApplication.attest,
+        schema_id=schema_id,
+        subject_addr=subject_addr,
+        claim_hash_32=claim_hash,
+        nonce_32=nonce,
+        sig_64=signature,
+        cid=cid,
+        attester_pk=attester_pk,
+        boxes=[schema_box, att_box, att_storage_box],
+        signer=signer,
+    )
+
+    # Verify attestation exists and is active
+    box_value = algod_client.application_box_by_name(deployed_client.app_id, b"att:" + att_id)[
+        "value"
+    ]  # type: ignore[call-overload]
+    import base64
+
+    data = base64.b64decode(box_value)
+    assert data[0:1] == b"A"  # Status OK
+
+    # Revoke attestation
+    reason = 42  # Revocation reason code
+    result = deployed_client.call(
+        AASApplication.revoke,
+        att_id=att_id,
+        reason=reason,
+        boxes=[att_storage_box],
+        signer=signer,  # Use schema owner signer for simplicity
+    )
+
+    # Verify revocation succeeded
+    transaction.wait_for_confirmation(algod_client, result.tx_id, 4)
+
+    # Verify attestation status changed to "R"
+    box_value = algod_client.application_box_by_name(deployed_client.app_id, b"att:" + att_id)[
+        "value"
+    ]  # type: ignore[call-overload]
+    data = base64.b64decode(box_value)
+    assert data[0:1] == b"R"  # Status Revoked
+
+    # Verify reason is stored at the end (last 8 bytes)
+    reason_bytes = data[-8:]
+    assert int.from_bytes(reason_bytes, "big") == reason
+
+
+@pytest.mark.localnet
+def test_revoke_unauthorized(
+    deployed_client: ApplicationClient,
+    algod_client: AlgodClient,
+    localnet_signer: tuple[AccountTransactionSigner, str],
+) -> None:
+    """Test that unauthorized users cannot revoke attestations."""
+    signer, owner_addr = localnet_signer
+    schema_id = b"revoke_unauth_test"
+    uri = "revoke-unauth-schema"
+    flags = 1
+    schema_box = (deployed_client.app_id, b"schema:" + schema_id)
+    att_box = (deployed_client.app_id, b"attesters:" + schema_id)
+
+    # Create schema and setup attestation (use working pattern)
+    deployed_client.call(
+        AASApplication.create_schema,
+        schema_id=schema_id,
+        owner=owner_addr,
+        uri=uri,
+        flags=flags,
+        boxes=[schema_box],
+        signer=signer,
+    )
+
+    # Generate ed25519 keypair for attester (copy working pattern)
+    from nacl.signing import SigningKey
+
+    attester_sk = SigningKey.generate()
+    attester_pk = bytes(attester_sk.verify_key)
+
+    # Grant attester
+    deployed_client.call(
+        AASApplication.grant_attester,
+        schema_id=schema_id,
+        attester_pk=attester_pk,
+        boxes=[schema_box, att_box],
+        signer=signer,
+    )
+
+    # Prepare attestation data (copy exact pattern from working test)
+    subject_addr = owner_addr  # Use owner as subject for simplicity
+    claim_hash = b"U" * 32  # 32-byte claim hash
+    nonce = b"N" * 32  # 32-byte nonce
+    cid = "QmUnauth123"
+
+    # Build canonical message and sign (copy exact pattern)
+    import hashlib
+
+    from algosdk import encoding
+
+    subject_bytes = encoding.decode_address(subject_addr)
+    message = schema_id + subject_bytes + claim_hash + nonce
+    signature = bytes(attester_sk.sign(message).signature)
+
+    # Generate attestation ID
+    att_id = hashlib.sha256(message).digest()
+    att_storage_box = (deployed_client.app_id, b"att:" + att_id)
+
+    # Create attestation
+    deployed_client.call(
+        AASApplication.attest,
+        schema_id=schema_id,
+        subject_addr=subject_addr,
+        claim_hash_32=claim_hash,
+        nonce_32=nonce,
+        sig_64=signature,
+        cid=cid,
+        attester_pk=attester_pk,
+        boxes=[schema_box, att_box, att_storage_box],
+        signer=signer,
+    )
+
+    # Create different signer (unauthorized user)
+    from algosdk.kmd import KMDClient
+
+    kmd = KMDClient(
+        "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "http://localhost:4002"
+    )
+    wallets = kmd.list_wallets()
+    wallet = next((w for w in wallets if w["name"] == "unencrypted-default-wallet"), None)
+    assert wallet, "LocalNet wallet missing"
+    handle = kmd.init_wallet_handle(wallet["id"], "")
+    try:
+        addrs = kmd.list_keys(handle)
+        unauthorized_addr = next(
+            (a for a in addrs if a != owner_addr), addrs[0]
+        )  # Pick different address
+        unauthorized_sk = kmd.export_key(handle, "", unauthorized_addr)
+        unauthorized_signer = AccountTransactionSigner(unauthorized_sk)
+
+        # Attempt unauthorized revocation (should fail)
+        reason = 99  # Unauthorized attempt
+        with pytest.raises(Exception):  # Should fail - unauthorized
+            deployed_client.call(
+                AASApplication.revoke,
+                att_id=att_id,
+                reason=reason,
+                boxes=[att_storage_box],
+                signer=unauthorized_signer,
+            )
+    finally:
+        kmd.release_wallet_handle(handle)
+
+
+@pytest.mark.localnet
+def test_revoke_already_revoked(
+    deployed_client: ApplicationClient,
+    algod_client: AlgodClient,
+    localnet_signer: tuple[AccountTransactionSigner, str],
+) -> None:
+    """Test that already revoked attestations cannot be revoked again."""
+    signer, owner_addr = localnet_signer
+    schema_id = b"revoke_twice_test"
+    uri = "revoke-twice-schema"
+    flags = 1
+    schema_box = (deployed_client.app_id, b"schema:" + schema_id)
+    att_box = (deployed_client.app_id, b"attesters:" + schema_id)
+
+    deployed_client.call(
+        AASApplication.create_schema,
+        schema_id=schema_id,
+        owner=owner_addr,
+        uri=uri,
+        flags=flags,
+        boxes=[schema_box],
+        signer=signer,
+    )
+
+    from nacl.signing import SigningKey
+
+    attester_sk = SigningKey.generate()
+    attester_pk = bytes(attester_sk.verify_key)
+
+    deployed_client.call(
+        AASApplication.grant_attester,
+        schema_id=schema_id,
+        attester_pk=attester_pk,
+        boxes=[schema_box, att_box],
+        signer=signer,
+    )
+
+    subject_addr = owner_addr
+    claim_hash = b"T" * 32
+    nonce = b"W" * 32
+    cid = "QmTwice123"
+
+    import hashlib
+
+    from algosdk import encoding
+
+    subject_bytes = encoding.decode_address(subject_addr)
+    message = schema_id + subject_bytes + claim_hash + nonce
+    signature = bytes(attester_sk.sign(message).signature)
+
+    att_id = hashlib.sha256(message).digest()
+    att_storage_box = (deployed_client.app_id, b"att:" + att_id)
+
+    deployed_client.call(
+        AASApplication.attest,
+        schema_id=schema_id,
+        subject_addr=subject_addr,
+        claim_hash_32=claim_hash,
+        nonce_32=nonce,
+        sig_64=signature,
+        cid=cid,
+        attester_pk=attester_pk,
+        boxes=[schema_box, att_box, att_storage_box],
+        signer=signer,
+    )
+
+    reason = 42
+    result = deployed_client.call(
+        AASApplication.revoke,
+        att_id=att_id,
+        reason=reason,
+        boxes=[att_storage_box],
+        signer=signer,
+    )
+    transaction.wait_for_confirmation(algod_client, result.tx_id, 4)
+
+    with pytest.raises(Exception):
+        deployed_client.call(
+            AASApplication.revoke,
+            att_id=att_id,
+            reason=99,
+            boxes=[att_storage_box],
+            signer=signer,
+        )
+
+
+@pytest.mark.localnet
+def test_revoke_nonexistent(
+    deployed_client: ApplicationClient,
+    algod_client: AlgodClient,
+    localnet_signer: tuple[AccountTransactionSigner, str],
+) -> None:
+    """Test that non-existent attestations cannot be revoked."""
+    signer, _ = localnet_signer
+
+    # Generate fake attestation ID
+    import hashlib
+
+    fake_att_id = hashlib.sha256(b"fake_attestation_id_that_does_not_exist").digest()
+    fake_att_box = (deployed_client.app_id, b"att:" + fake_att_id)
+
+    # Attempt to revoke non-existent attestation (should fail)
+    reason = 404  # Not found
+    with pytest.raises(Exception):  # Should fail - attestation doesn't exist
+        deployed_client.call(
+            AASApplication.revoke,
+            att_id=fake_att_id,
+            reason=reason,
+            boxes=[fake_att_box],
+            signer=signer,
+        )
+
+
+@pytest.mark.localnet
 def test_full_attestation_flow() -> None:
     """Test complete attestation flow on LocalNet.
-    
+
     This test requires AlgoKit LocalNet running:
     algokit localnet start
     """
@@ -675,5 +1074,5 @@ def test_full_attestation_flow() -> None:
     # 4. Create attestation
     # 5. Verify attestation
     # 6. Revoke attestation
-    
+
     pytest.skip("LocalNet integration test - implement in later steps")
