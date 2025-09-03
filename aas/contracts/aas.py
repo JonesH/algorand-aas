@@ -4,14 +4,42 @@ Schema Registry + Attestation Writer using PyTeal + Beaker.
 Stores schemas and attestations in boxes with minimal on-chain PII.
 """
 
-from __future__ import annotations
-
-from beaker import Application
+from beaker import Application, external
+from pyteal import (
+    abi,
+    Assert,
+    Bytes,
+    Concat,
+    Itob,
+    Log,
+    BoxGet,
+    BoxPut,
+    Seq,
+    Not,
+    ScratchVar,
+    TealType,
+)
 
 
 class AASApplication(Application):
-    """Minimal AAS Application for Step 0 scaffolding."""
-    pass
+    """AAS Application with Schema Registry functionality."""
+    
+    @external
+    def create_schema(
+        self,
+        schema_id: abi.DynamicBytes,
+        owner: abi.Address,
+        uri: abi.String,
+        flags: abi.Uint64,
+    ):
+        """Create new schema in registry."""
+        key, val = ScratchVar(TealType.bytes), ScratchVar(TealType.bytes)
+        return Seq(
+            key.store(Concat(Bytes("schema:"), schema_id.get())),
+            val.store(Concat(owner.get(), Itob(flags.get()), uri.get())),
+            BoxPut(key.load(), val.load()),
+            Log(Concat(Bytes("SchemaCreated:"), schema_id.get())),
+        )
 
 
 def get_app() -> Application:

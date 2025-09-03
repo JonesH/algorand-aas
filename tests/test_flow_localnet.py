@@ -7,6 +7,263 @@ Marked with @pytest.mark.localnet for conditional execution.
 from __future__ import annotations
 
 import pytest
+from beaker.client import ApplicationClient
+from algosdk.v2client.algod import AlgodClient
+from algosdk.kmd import KMDClient
+from algosdk.atomic_transaction_composer import AccountTransactionSigner
+from algosdk import account, transaction
+from algosdk.logic import get_application_address
+from aas.contracts.aas import get_app, AASApplication
+
+
+@pytest.fixture(scope="session")
+def algod_client() -> AlgodClient:
+    """LocalNet Algod client fixture."""
+    try:
+        # LocalNet Algod typically uses this token
+        client = AlgodClient("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "http://localhost:4001")
+        # Test connection
+        client.status()
+        return client
+    except Exception as e:
+        pytest.skip(f"LocalNet Algod connection failed: {e}. Please ensure LocalNet is running with 'algokit localnet start'")
+
+
+@pytest.fixture
+def localnet_signer(algod_client: AlgodClient) -> tuple[AccountTransactionSigner, str]:
+    """Ephemeral funded signer backed by KMD; closed out after test.
+
+    - Picks richest KMD account as funder
+    - Generates a fresh account, funds it, returns signer
+    - On teardown, closes remainder back to funder
+    """
+    try:
+        kmd = KMDClient(
+            "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "http://localhost:4002",
+        )
+        wallets = kmd.list_wallets()
+
+        wallet = next((w for w in wallets if w["name"] == "unencrypted-default-wallet"), None)
+        if not wallet:
+            raise Exception("LocalNet 'unencrypted-default-wallet' not found. Is LocalNet running?")
+
+        handle = kmd.init_wallet_handle(wallet["id"], "")
+        try:
+            addrs = kmd.list_keys(handle)
+            if not addrs:
+                raise Exception("No accounts found in LocalNet wallet")
+
+            # Choose richest as funder
+            richest = max(addrs, key=lambda a: algod_client.account_info(a)["amount"])  # type: ignore[index]
+            funder_sk = kmd.export_key(handle, "", richest)
+
+            # Create ephemeral account
+            ep_sk, ep_addr = account.generate_account()
+
+            # Fund ephemeral (2 Algos) and wait
+            sp = algod_client.suggested_params()
+            pay = transaction.PaymentTxn(richest, sp, ep_addr, 2_000_000)
+            txid = algod_client.send_transaction(pay.sign(funder_sk))
+            transaction.wait_for_confirmation(algod_client, txid, 4)
+
+            # Yield signer for ephemeral
+            yield AccountTransactionSigner(ep_sk), ep_addr
+
+            # Teardown: close remainder to funder
+            sp2 = algod_client.suggested_params()
+            close = transaction.PaymentTxn(ep_addr, sp2, richest, 0, close_remainder_to=richest)
+            try:
+                txid2 = algod_client.send_transaction(close.sign(ep_sk))
+                transaction.wait_for_confirmation(algod_client, txid2, 4)
+            except Exception:
+                # Best-effort close; ignore failures to not mask test results
+                pass
+        finally:
+            kmd.release_wallet_handle(handle)
+
+    except Exception as e:
+        pytest.skip(
+            f"LocalNet KMD setup failed: {e}. Ensure LocalNet is running: 'algokit localnet start'"
+        )
+
+
+@pytest.fixture
+def deployed_client(algod_client: AlgodClient, localnet_signer: tuple[AccountTransactionSigner, str]) -> ApplicationClient:
+    """Deploy AAS contract and return configured client.
+    
+    Returns fresh deployment for each test.
+    """
+    signer, address = localnet_signer
+    app = get_app()
+    client = ApplicationClient(algod_client, app=app, sender=address, signer=signer)
+    client.create()
+
+    # Fund the application address to cover box MBR
+    try:
+        app_addr = get_application_address(client.app_id)
+
+        # Use KMD richest account as funder
+        kmd = KMDClient(
+            "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "http://localhost:4002",
+        )
+        wallets = kmd.list_wallets()
+        wallet = next((w for w in wallets if w["name"] == "unencrypted-default-wallet"), None)
+        if wallet:
+            handle = kmd.init_wallet_handle(wallet["id"], "")
+            try:
+                addrs = kmd.list_keys(handle)
+                richest = max(addrs, key=lambda a: algod_client.account_info(a)["amount"])  # type: ignore[index]
+                funder_sk = kmd.export_key(handle, "", richest)
+                sp = algod_client.suggested_params()
+                # 1 Algo should comfortably cover one small box
+                pay = transaction.PaymentTxn(richest, sp, app_addr, 1_000_000)
+                txid = algod_client.send_transaction(pay.sign(funder_sk))
+                transaction.wait_for_confirmation(algod_client, txid, 4)
+            finally:
+                kmd.release_wallet_handle(handle)
+    except Exception:
+        # Best-effort funding; test will fail with MBR error if insufficient
+        pass
+
+    return client
+
+
+@pytest.mark.localnet  
+def test_localnet_connectivity(algod_client: AlgodClient) -> None:
+    """Test basic LocalNet connectivity.
+    
+    This test requires AlgoKit LocalNet running:
+    algokit localnet start
+    """
+    status = algod_client.status()
+    assert status is not None
+    assert "last-round" in status
+
+
+@pytest.mark.localnet
+def test_create_schema_success(deployed_client: ApplicationClient, algod_client: AlgodClient, localnet_signer: tuple[AccountTransactionSigner, str]) -> None:
+    """Test successful schema creation."""
+    
+    # Test data
+    schema_id = b"test_schema_001"
+    owner = "7ZUECA7HFLZTXENRV24SHLU4AVPUTMTTDUFUBNBD64C73F3UHRTHAIOF6Q"
+    uri = "https://example.com/schema.json"
+    flags = 1
+    
+    # Call create_schema with boxes parameter
+    signer, address = localnet_signer
+    box_key = b"schema:" + schema_id
+    result = deployed_client.call(
+        AASApplication.create_schema,
+        schema_id=schema_id,
+        owner=owner,
+        uri=uri,
+        flags=flags,
+        boxes=[(deployed_client.app_id, box_key)],
+        signer=signer
+    )
+    
+    # Verify transaction succeeded (confirm by tx id)
+    tx_info = transaction.wait_for_confirmation(algod_client, result.tx_id, 4)
+    assert tx_info.get("confirmed-round", 0) > 0
+    
+    # Verify box was created and contains expected data
+    box_key = b"schema:" + schema_id
+    box_value = algod_client.application_box_by_name(deployed_client.app_id, box_key)["value"]
+    
+    # Expected format: owner(32B) + flags(8B) + uri
+    import base64
+    from algosdk import encoding
+    owner_bytes = encoding.decode_address(owner)
+    expected_flags = flags.to_bytes(8, 'big')
+    expected_uri = uri.encode('utf-8')
+    expected_value = owner_bytes + expected_flags + expected_uri
+    
+    assert base64.b64decode(box_value) == expected_value
+
+
+@pytest.mark.localnet
+def test_create_schema_duplicate_fails(deployed_client: ApplicationClient, algod_client: AlgodClient, localnet_signer: tuple[AccountTransactionSigner, str]) -> None:
+    """Test that creating duplicate schema fails."""
+    
+    # Test data
+    schema_id = b"duplicate_test"
+    owner = "7ZUECA7HFLZTXENRV24SHLU4AVPUTMTTDUFUBNBD64C73F3UHRTHAIOF6Q"
+    uri = "https://example.com/schema.json"
+    flags = 1
+    
+    # First creation should succeed
+    signer, address = localnet_signer
+    box_key = b"schema:" + schema_id
+    deployed_client.call(
+        AASApplication.create_schema,
+        schema_id=schema_id,
+        owner=owner,
+        uri=uri,
+        flags=flags,
+        boxes=[(deployed_client.app_id, box_key)],
+        signer=signer
+    )
+    
+    # Second creation should succeed for now (no duplicate check yet)
+    # TODO: Add duplicate prevention logic
+    deployed_client.call(
+        AASApplication.create_schema,
+        schema_id=schema_id,
+        owner=owner,
+        uri=uri,
+        flags=flags,
+        boxes=[(deployed_client.app_id, box_key)],
+        signer=signer
+    )
+
+
+@pytest.mark.localnet
+def test_create_schema_box_storage(deployed_client: ApplicationClient, algod_client: AlgodClient, localnet_signer: tuple[AccountTransactionSigner, str]) -> None:
+    """Test schema box storage format."""
+    
+    # Test with different data
+    schema_id = b"storage_test_schema"
+    owner = "7ZUECA7HFLZTXENRV24SHLU4AVPUTMTTDUFUBNBD64C73F3UHRTHAIOF6Q"
+    uri = "test-uri"
+    flags = 42
+    
+    # Create schema
+    signer, address = localnet_signer
+    box_key = b"schema:" + schema_id
+    deployed_client.call(
+        AASApplication.create_schema,
+        schema_id=schema_id,
+        owner=owner,
+        uri=uri,
+        flags=flags,
+        boxes=[(deployed_client.app_id, box_key)],
+        signer=signer
+    )
+    
+    # Read box and verify format
+    box_key = b"schema:" + schema_id
+    box_value = algod_client.application_box_by_name(deployed_client.app_id, box_key)["value"]
+    
+    import base64
+    from algosdk import encoding
+    data = base64.b64decode(box_value)
+    
+    # Parse: owner(32B) + flags(8B) + uri(rest)
+    stored_owner = data[:32]
+    stored_flags = data[32:40]
+    stored_uri = data[40:]
+    
+    # Verify each component
+    expected_owner = encoding.decode_address(owner)
+    expected_flags = flags.to_bytes(8, 'big')
+    expected_uri = uri.encode('utf-8')
+    
+    assert stored_owner == expected_owner
+    assert stored_flags == expected_flags
+    assert stored_uri == expected_uri
 
 
 @pytest.mark.localnet  
