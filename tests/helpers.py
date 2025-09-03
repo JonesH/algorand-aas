@@ -117,18 +117,22 @@ def parse_attestation_box(algod_client: AlgodClient, app_id: int, att_id: bytes)
     box_value = algod_client.application_box_by_name(app_id, b"att:" + att_id)["value"]  # type: ignore[call-overload]
     data = base64.b64decode(box_value)
     
-    # Parse format: status(1B) + subject(32B) + schema_id_len(8B) + schema_id + cid
+    # Parse format: status(1B) + subject(32B) + schema_id_len(8B) + schema_id + cid [+ reason(8B)]
     status = data[0:1].decode('utf-8')
     subject_bytes = data[1:33]
     subject_addr = encoding.encode_address(subject_bytes)
     schema_id_len = int.from_bytes(data[33:41], 'big')
     schema_id = data[41:41+schema_id_len]
-    cid = data[41+schema_id_len:-8].decode('utf-8') if len(data) > 41+schema_id_len+8 else ""
     
-    # Check for revocation reason (last 8 bytes if status is 'R')
+    # Parse CID and reason based on status
     reason = None
-    if status == 'R' and len(data) >= 8:
+    if status == 'R' and len(data) >= 41+schema_id_len+8:
+        # For revoked attestations, reason is in last 8 bytes, CID before that
+        cid = data[41+schema_id_len:-8].decode('utf-8') if len(data) > 41+schema_id_len+8 else ""
         reason = int.from_bytes(data[-8:], 'big')
+    else:
+        # For active attestations, no reason bytes - CID goes to end
+        cid = data[41+schema_id_len:].decode('utf-8') if len(data) > 41+schema_id_len else ""
     
     return {
         'status': status,
