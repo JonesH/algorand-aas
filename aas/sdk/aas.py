@@ -7,8 +7,11 @@ Handles schema creation, attestation writing, and verification.
 from __future__ import annotations
 
 from algosdk.v2client import algod
-from algosdk import encoding
+from algosdk import encoding, transaction
+from algosdk.atomic_transaction_composer import AccountTransactionSigner
+from beaker.client import ApplicationClient
 
+from aas.contracts.aas import AASApplication, get_app
 from aas.sdk.hashing import generate_schema_id, generate_claim_hash, generate_attestation_id
 from aas.sdk.models import Attestation, AttestationStatus
 
@@ -29,6 +32,8 @@ class AASClient:
             
         self.algod_client = algod_client
         self.app_id = app_id
+        self.signer: AccountTransactionSigner | None = None
+        self.sender: str | None = None
     
     def get_app_id(self) -> int | None:
         """Get the AAS application ID."""
@@ -40,6 +45,21 @@ class AASClient:
             raise ValueError("App ID must be positive")
         self.app_id = app_id
     
+    def set_signer(self, signer: AccountTransactionSigner, sender: str) -> None:
+        """Set transaction signer and sender address."""
+        self.signer = signer
+        self.sender = sender
+    
+    def _create_application_client(self) -> ApplicationClient:
+        """Create ApplicationClient for blockchain operations."""
+        if not self.app_id:
+            raise ValueError("App ID not set")
+        if not self.signer or not self.sender:
+            raise ValueError("Signer not set. Call set_signer() first.")
+        
+        app = get_app()
+        return ApplicationClient(self.algod_client, app=app, app_id=self.app_id, sender=self.sender, signer=self.signer)
+    
     def create_schema(self, schema_data: dict, owner_addr: str, uri: str, flags: int = 0) -> str:
         """Create new schema and return schema ID."""
         if not self.app_id:
@@ -50,11 +70,22 @@ class AASClient:
     
     def _submit_schema_creation(self, schema_id: str, owner_addr: str, uri: str, flags: int) -> str:
         """Submit schema creation transaction."""
-        raise NotImplementedError(
-            "Real blockchain transaction submission not yet implemented. "
-            "The CLI currently validates inputs but does not submit to blockchain. "
-            "Use LocalNet integration tests (pytest -m localnet) for actual blockchain operations."
+        client = self._create_application_client()
+        
+        schema_id_bytes = schema_id.encode('utf-8')
+        box_key = b"schema:" + schema_id_bytes
+        
+        result = client.call(
+            AASApplication.create_schema,
+            schema_id=schema_id_bytes,
+            owner=owner_addr,
+            uri=uri,
+            flags=flags,
+            boxes=[(client.app_id, box_key)],
         )
+        
+        transaction.wait_for_confirmation(self.algod_client, result.tx_id, 4)
+        return schema_id
     
     def grant_attester(self, schema_id: str, attester_pk: str) -> bool:
         """Grant attester permission for schema."""
@@ -67,11 +98,23 @@ class AASClient:
     
     def _submit_attester_grant(self, schema_id: str, attester_pk: str) -> bool:
         """Submit attester grant transaction."""
-        raise NotImplementedError(
-            "Real blockchain transaction submission not yet implemented. "
-            "The CLI currently validates inputs but does not submit to blockchain. "
-            "Use LocalNet integration tests (pytest -m localnet) for actual blockchain operations."
+        client = self._create_application_client()
+        
+        schema_id_bytes = schema_id.encode('utf-8')
+        attester_pk_bytes = bytes.fromhex(attester_pk)
+        
+        schema_box = (client.app_id, b"schema:" + schema_id_bytes)
+        att_box = (client.app_id, b"attesters:" + schema_id_bytes)
+        
+        result = client.call(
+            AASApplication.grant_attester,
+            schema_id=schema_id_bytes,
+            attester_pk=attester_pk_bytes,
+            boxes=[schema_box, att_box],
         )
+        
+        transaction.wait_for_confirmation(self.algod_client, result.tx_id, 4)
+        return True
     
     def attest(self, schema_id: str, subject_addr: str, claim_data: dict, nonce: str, signature: str, attester_pk: str, cid: str = "") -> str:
         """Create attestation and return attestation ID."""
@@ -86,11 +129,33 @@ class AASClient:
     
     def _submit_attestation(self, schema_id: str, subject_addr: str, claim_hash: str, nonce: str, signature: str, attester_pk: str, cid: str) -> None:
         """Submit attestation transaction."""
-        raise NotImplementedError(
-            "Real blockchain transaction submission not yet implemented. "
-            "The CLI currently validates inputs but does not submit to blockchain. "
-            "Use LocalNet integration tests (pytest -m localnet) for actual blockchain operations."
+        client = self._create_application_client()
+        
+        schema_id_bytes = schema_id.encode('utf-8')
+        claim_hash_bytes = bytes.fromhex(claim_hash)
+        nonce_bytes = bytes.fromhex(nonce)
+        signature_bytes = bytes.fromhex(signature)
+        attester_pk_bytes = bytes.fromhex(attester_pk)
+        
+        att_id = generate_attestation_id(schema_id, subject_addr, claim_hash, nonce)
+        
+        schema_box = (client.app_id, b"schema:" + schema_id_bytes)
+        att_box = (client.app_id, b"attesters:" + schema_id_bytes)
+        att_storage_box = (client.app_id, b"att:" + att_id.encode('utf-8'))
+        
+        result = client.call(
+            AASApplication.attest,
+            schema_id=schema_id_bytes,
+            subject_addr=subject_addr,
+            claim_hash_32=claim_hash_bytes,
+            nonce_32=nonce_bytes,
+            sig_64=signature_bytes,
+            cid=cid,
+            attester_pk=attester_pk_bytes,
+            boxes=[schema_box, att_box, att_storage_box],
         )
+        
+        transaction.wait_for_confirmation(self.algod_client, result.tx_id, 4)
     
     def revoke(self, attestation_id: str, reason: int = 0) -> bool:
         """Revoke existing attestation."""
@@ -103,11 +168,20 @@ class AASClient:
     
     def _submit_revocation(self, attestation_id: str, reason: int) -> bool:
         """Submit revocation transaction."""
-        raise NotImplementedError(
-            "Real blockchain transaction submission not yet implemented. "
-            "The CLI currently validates inputs but does not submit to blockchain. "
-            "Use LocalNet integration tests (pytest -m localnet) for actual blockchain operations."
+        client = self._create_application_client()
+        
+        att_id_bytes = attestation_id.encode('utf-8')
+        att_storage_box = (client.app_id, b"att:" + att_id_bytes)
+        
+        result = client.call(
+            AASApplication.revoke,
+            att_id=att_id_bytes,
+            reason=reason,
+            boxes=[att_storage_box],
         )
+        
+        transaction.wait_for_confirmation(self.algod_client, result.tx_id, 4)
+        return True
     
     def verify_attestation(self, attestation_id: str) -> Attestation | None:
         """Read attestation from box storage and return structured data."""
