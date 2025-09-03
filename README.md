@@ -44,14 +44,17 @@ export ALGOD_URL=http://localhost:4001
 export ALGOD_TOKEN=<token-from-localnet>
 export DEPLOYER_MNEMONIC="25 words ..."
 
-# Run all tests
+# Run fast unit tests only (0.4s - recommended for development)
+uv run pytest -m "not localnet" -q
+
+# Run all tests (including slow LocalNet tests - 15-20s) 
 uv run pytest
 
-# Run only unit tests (skip LocalNet)
-uv run pytest -m "not localnet"
+# Run LocalNet integration tests in parallel (faster)
+uv run pytest -m localnet -n 2
 
-# Run only LocalNet integration tests
-uv run pytest -m localnet
+# Run full test suite in parallel  
+uv run pytest -n auto
 
 # Run type checking
 uv run mypy .
@@ -118,6 +121,17 @@ This project follows TDD (Test-Driven Development):
 2. Implement minimal code to make tests pass
 3. Ensure all tests green before moving to next step
 4. Commit only when tests pass
+
+### Fast Development Workflow
+
+For rapid development feedback (TDD cycle):
+```bash
+# Lightning-fast unit tests (0.4s) - use during development
+uv run pytest -m "not localnet" -q
+
+# Full integration tests (15-20s) - use before commits
+uv run pytest -m localnet -n 2
+```
 
 ### Project Structure
 
@@ -189,8 +203,16 @@ tests/
 - [x] Deployment script for LocalNet/TestNet/MainNet environments
 
 ## Test Results
-```
-======================== 73 passed, 1 skipped in 34.99s ========================
+
+**Optimized Performance** (function-scoped deployment, 2-round confirmations, enhanced funding, parallel execution):
+```bash
+# Unit tests only (development workflow)
+uv run pytest -m "not localnet" -q
+======================== 37 passed in 0.37s ========================
+
+# Full test suite (pre-commit workflow)  
+uv run pytest -n 2
+======================== 73 passed, 1 skipped in ~20-25s ========================
 ```
 
 **Current Focus**: All 6 steps complete! Production-ready AAS with full blockchain transaction support, deployment script, and comprehensive CLI interface

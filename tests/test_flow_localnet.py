@@ -71,11 +71,11 @@ def localnet_signer(
             # Create ephemeral account
             ep_sk, ep_addr = account.generate_account()
 
-            # Fund ephemeral (2 Algos) and wait
+            # Fund ephemeral (10 Algos for more headroom) and wait
             sp = algod_client.suggested_params()
-            pay = transaction.PaymentTxn(richest, sp, ep_addr, 2_000_000)
+            pay = transaction.PaymentTxn(richest, sp, ep_addr, 10_000_000)
             txid = algod_client.send_transaction(pay.sign(funder_sk))
-            transaction.wait_for_confirmation(algod_client, txid, 4)
+            transaction.wait_for_confirmation(algod_client, txid, 2)
 
             # Yield signer for ephemeral
             yield AccountTransactionSigner(ep_sk), ep_addr
@@ -85,7 +85,7 @@ def localnet_signer(
             close = transaction.PaymentTxn(ep_addr, sp2, richest, 0, close_remainder_to=richest)
             try:
                 txid2 = algod_client.send_transaction(close.sign(ep_sk))
-                transaction.wait_for_confirmation(algod_client, txid2, 4)
+                transaction.wait_for_confirmation(algod_client, txid2, 2)
             except Exception:
                 # Best-effort close; ignore failures to not mask test results
                 pass
@@ -98,13 +98,15 @@ def localnet_signer(
         )
 
 
+
+
 @pytest.fixture
 def deployed_client(
     algod_client: AlgodClient, localnet_signer: tuple[AccountTransactionSigner, str]
 ) -> ApplicationClient:
     """Deploy AAS contract and return configured client.
 
-    Returns fresh deployment for each test.
+    Function-scoped: deploys fresh contract for each test to avoid conflicts.
     """
     signer, address = localnet_signer
     app = get_app()
@@ -129,10 +131,10 @@ def deployed_client(
                 richest = max(addrs, key=lambda a: algod_client.account_info(a)["amount"])  # type: ignore[call-overload]
                 funder_sk = kmd.export_key(handle, "", richest)
                 sp = algod_client.suggested_params()
-                # 1 Algo should comfortably cover one small box
-                pay = transaction.PaymentTxn(richest, sp, app_addr, 1_000_000)
+                # 5 Algos should cover multiple box operations 
+                pay = transaction.PaymentTxn(richest, sp, app_addr, 5_000_000)
                 txid = algod_client.send_transaction(pay.sign(funder_sk))
-                transaction.wait_for_confirmation(algod_client, txid, 4)
+                transaction.wait_for_confirmation(algod_client, txid, 2)
             finally:
                 kmd.release_wallet_handle(handle)
     except Exception:
@@ -165,7 +167,7 @@ def test_create_schema_success(
     # Test data
     schema_id = b"test_schema_001"
     owner = "7ZUECA7HFLZTXENRV24SHLU4AVPUTMTTDUFUBNBD64C73F3UHRTHAIOF6Q"
-    uri = "https://example.com/schema.json"
+    uri = "schema"
     flags = 1
 
     # Call create_schema with boxes parameter
@@ -182,7 +184,7 @@ def test_create_schema_success(
     )
 
     # Verify transaction succeeded (confirm by tx id)
-    tx_info = transaction.wait_for_confirmation(algod_client, result.tx_id, 4)
+    tx_info = transaction.wait_for_confirmation(algod_client, result.tx_id, 2)
     assert tx_info.get("confirmed-round", 0) > 0
 
     # Verify box was created and contains expected data
@@ -213,7 +215,7 @@ def test_create_schema_idempotent_behavior(
     # Test data
     schema_id = b"duplicate_test"
     owner = "7ZUECA7HFLZTXENRV24SHLU4AVPUTMTTDUFUBNBD64C73F3UHRTHAIOF6Q"
-    uri = "https://example.com/schema.json"
+    uri = "schema"
     flags = 1
 
     # First creation should succeed
@@ -304,7 +306,7 @@ def test_grant_attester_only_owner(
 
     # Create schema with owner = owner_addr
     schema_id = b"owner_only_schema"
-    uri = "https://example.com/schema.json"
+    uri = "schema"
     flags = 1
     schema_box = (deployed_client.app_id, b"schema:" + schema_id)
     att_box = (deployed_client.app_id, b"attesters:" + schema_id)
@@ -318,7 +320,7 @@ def test_grant_attester_only_owner(
         boxes=[schema_box],
         signer=signer,
     )
-    transaction.wait_for_confirmation(algod_client, res.tx_id, 4)
+    transaction.wait_for_confirmation(algod_client, res.tx_id, 2)
 
     # Prepare an attester key (32 bytes)
     attester_pk = b"A" * 32
@@ -331,7 +333,7 @@ def test_grant_attester_only_owner(
         boxes=[schema_box, att_box],
         signer=signer,
     )
-    transaction.wait_for_confirmation(algod_client, res2.tx_id, 4)
+    transaction.wait_for_confirmation(algod_client, res2.tx_id, 2)
 
     # Non-owner should be denied
     # Create another ephemeral signer
@@ -355,7 +357,7 @@ def test_grant_attester_only_owner(
         txid = algod_client.send_transaction(
             transaction.PaymentTxn(richest, sp, ep_addr, 2_000_000).sign(funder_sk)
         )
-        transaction.wait_for_confirmation(algod_client, txid, 4)
+        transaction.wait_for_confirmation(algod_client, txid, 2)
         other_signer = AccountTransactionSigner(ep_sk)
 
         with pytest.raises(Exception):
@@ -394,7 +396,7 @@ def test_grant_attester_idempotent(
         boxes=[schema_box],
         signer=signer,
     )
-    transaction.wait_for_confirmation(algod_client, res.tx_id, 4)
+    transaction.wait_for_confirmation(algod_client, res.tx_id, 2)
 
     attester_pk = b"Z" * 32
     for _ in range(2):
@@ -405,7 +407,7 @@ def test_grant_attester_idempotent(
             boxes=[schema_box, att_box],
             signer=signer,
         )
-        transaction.wait_for_confirmation(algod_client, r.tx_id, 4)
+        transaction.wait_for_confirmation(algod_client, r.tx_id, 2)
 
     # Verify only one 32B entry exists
     import base64
@@ -444,7 +446,7 @@ def test_attest_happy_path(
     # Create attestation using helper
     claim_hash = b"H" * 32
     nonce = b"N" * 32
-    cid = "QmTest123"
+    cid = "T"
     
     att_id = create_attestation_helper(
         deployed_client, signer, schema_id, owner_addr, claim_hash, nonce, attester_sk, cid
@@ -482,7 +484,7 @@ def test_attest_unauthorized_attester(
     # Prepare attestation data
     claim_hash = b"U" * 32
     nonce = b"N" * 32
-    cid = "QmUnauthorized"
+    cid = "U"
 
     # Build message and sign with unauthorized key using helper
     message = build_attestation_message(schema_id, owner_addr, claim_hash, nonce)
@@ -552,7 +554,7 @@ def test_attest_duplicate_fails(
     subject_addr = owner_addr
     claim_hash = b"D" * 32  # Same data = same att_id
     nonce = b"N" * 32
-    cid = "QmDuplicate"
+    cid = "D"
 
     import hashlib
 
@@ -578,7 +580,7 @@ def test_attest_duplicate_fails(
         boxes=[schema_box, att_box, att_storage_box],
         signer=signer,
     )
-    transaction.wait_for_confirmation(algod_client, result.tx_id, 4)
+    transaction.wait_for_confirmation(algod_client, result.tx_id, 2)
 
     # Second identical call should fail (duplicate)
     with pytest.raises(Exception):
@@ -638,7 +640,7 @@ def test_attest_invalid_signature(
     subject_addr = owner_addr
     claim_hash = b"I" * 32
     nonce = b"N" * 32
-    cid = "QmInvalid"
+    cid = "I"
 
     import hashlib
 
@@ -680,7 +682,7 @@ def test_revoke_attestation_success(
     from nacl.signing import SigningKey
     
     signer, owner_addr = localnet_signer
-    schema_id = b"revoke_success_test"
+    schema_id = f"revoke_success_test_{id(signer)}".encode('utf-8')
 
     # Create schema using helper
     create_schema_helper(deployed_client, signer, schema_id, owner_addr)
@@ -695,7 +697,7 @@ def test_revoke_attestation_success(
     # Create attestation using helper
     claim_hash = b"R" * 32
     nonce = b"V" * 32
-    cid = "QmRevoke123"
+    cid = "R"
     
     att_id = create_attestation_helper(
         deployed_client, signer, schema_id, owner_addr, claim_hash, nonce, attester_sk, cid
@@ -717,7 +719,7 @@ def test_revoke_attestation_success(
     )
 
     # Verify revocation succeeded
-    transaction.wait_for_confirmation(algod_client, result.tx_id, 4)
+    transaction.wait_for_confirmation(algod_client, result.tx_id, 2)
 
     # Verify attestation status changed and reason stored using helper
     revoked_data = parse_attestation_box(algod_client, deployed_client.app_id, att_id)
@@ -769,7 +771,7 @@ def test_revoke_unauthorized(
     subject_addr = owner_addr  # Use owner as subject for simplicity
     claim_hash = b"U" * 32  # 32-byte claim hash
     nonce = b"N" * 32  # 32-byte nonce
-    cid = "QmUnauth123"
+    cid = "A"
 
     # Build canonical message and sign (copy exact pattern)
     import hashlib
@@ -870,7 +872,7 @@ def test_revoke_already_revoked(
     subject_addr = owner_addr
     claim_hash = b"T" * 32
     nonce = b"W" * 32
-    cid = "QmTwice123"
+    cid = "W"
 
     import hashlib
 
@@ -904,7 +906,7 @@ def test_revoke_already_revoked(
         boxes=[att_storage_box],
         signer=signer,
     )
-    transaction.wait_for_confirmation(algod_client, result.tx_id, 4)
+    transaction.wait_for_confirmation(algod_client, result.tx_id, 2)
 
     with pytest.raises(Exception):
         deployed_client.call(
@@ -963,7 +965,7 @@ def test_invalid_parameter_lengths(
     from nacl.signing import SigningKey
     
     signer, owner_addr = localnet_signer
-    schema_id = b"invalid_len_test"
+    schema_id = f"invalid_len_test_{id(signer)}_{param_name}_{invalid_length}".encode('utf-8')
     
     # Create schema
     create_schema_helper(deployed_client, signer, schema_id, owner_addr)
@@ -1014,7 +1016,7 @@ def test_invalid_parameter_lengths(
                 claim_hash_32=claim_hash,
                 nonce_32=nonce,
                 sig_64=signature,
-                cid="test",
+                cid="t",
                 attester_pk=valid_attester_pk,
                 boxes=[schema_box, att_box, att_storage_box],
                 signer=signer,
@@ -1056,8 +1058,8 @@ def test_full_attestation_flow(
     # 1. Contract is already deployed via deployed_client fixture
     
     # 2. Create schema using helper
-    schema_id = b"full_flow_schema"
-    create_schema_helper(deployed_client, signer, schema_id, owner_addr, "https://example.com/full-flow.json", 1)
+    schema_id = f"full_flow_schema_{id(signer)}".encode('utf-8')
+    create_schema_helper(deployed_client, signer, schema_id, owner_addr, "flow", 1)
     
     # 3. Grant attester using helper
     attester_sk = SigningKey.generate()
@@ -1067,7 +1069,7 @@ def test_full_attestation_flow(
     # 4. Create attestation using helper
     claim_hash = b"F" * 32  
     nonce = b"L" * 32  
-    cid = "QmFullFlow"
+    cid = "F"
     
     att_id = create_attestation_helper(
         deployed_client, signer, schema_id, owner_addr, claim_hash, nonce, attester_sk, cid
@@ -1090,7 +1092,7 @@ def test_full_attestation_flow(
         boxes=[att_storage_box],
         signer=signer,
     )
-    transaction.wait_for_confirmation(algod_client, revoke_result.tx_id, 4)
+    transaction.wait_for_confirmation(algod_client, revoke_result.tx_id, 2)
 
     # Verify revocation using helper
     revoked_data = parse_attestation_box(algod_client, deployed_client.app_id, att_id)

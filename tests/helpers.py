@@ -126,10 +126,18 @@ def parse_attestation_box(algod_client: AlgodClient, app_id: int, att_id: bytes)
     
     # Parse CID and reason based on status
     reason = None
-    if status == 'R' and len(data) >= 41+schema_id_len+8:
-        # For revoked attestations, reason is in last 8 bytes, CID before that
-        cid = data[41+schema_id_len:-8].decode('utf-8') if len(data) > 41+schema_id_len+8 else ""
-        reason = int.from_bytes(data[-8:], 'big')
+    if status == 'R':
+        # For revoked attestations, smart contract replaces last 8 bytes with reason
+        # Format: status(1) + subject(32) + schema_id_len(8) + schema_id + (cid - 8 bytes) + reason(8)
+        if len(data) >= 41+schema_id_len:  # Same length as active, reason replaces last 8 bytes
+            # CID is from after schema_id to 8 bytes before end (reason takes last 8 bytes)
+            cid_start = 41+schema_id_len
+            cid_end = len(data)-8
+            cid = data[cid_start:cid_end].decode('utf-8') if cid_end > cid_start else ""
+            reason = int.from_bytes(data[-8:], 'big')
+        else:
+            # Not enough data for reason, just parse as active
+            cid = data[41+schema_id_len:].decode('utf-8') if len(data) > 41+schema_id_len else ""
     else:
         # For active attestations, no reason bytes - CID goes to end
         cid = data[41+schema_id_len:].decode('utf-8') if len(data) > 41+schema_id_len else ""

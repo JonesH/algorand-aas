@@ -84,7 +84,7 @@ class AASClient:
             boxes=[(client.app_id, box_key)],
         )
         
-        transaction.wait_for_confirmation(self.algod_client, result.tx_id, 4)
+        transaction.wait_for_confirmation(self.algod_client, result.tx_id, 2)
         return schema_id
     
     def grant_attester(self, schema_id: str, attester_pk: str) -> bool:
@@ -113,7 +113,7 @@ class AASClient:
             boxes=[schema_box, att_box],
         )
         
-        transaction.wait_for_confirmation(self.algod_client, result.tx_id, 4)
+        transaction.wait_for_confirmation(self.algod_client, result.tx_id, 2)
         return True
     
     def attest(self, schema_id: str, subject_addr: str, claim_data: dict, nonce: str, signature: str, attester_pk: str, cid: str = "") -> str:
@@ -155,7 +155,7 @@ class AASClient:
             boxes=[schema_box, att_box, att_storage_box],
         )
         
-        transaction.wait_for_confirmation(self.algod_client, result.tx_id, 4)
+        transaction.wait_for_confirmation(self.algod_client, result.tx_id, 2)
     
     def revoke(self, attestation_id: str, reason: int = 0) -> bool:
         """Revoke existing attestation."""
@@ -180,7 +180,7 @@ class AASClient:
             boxes=[att_storage_box],
         )
         
-        transaction.wait_for_confirmation(self.algod_client, result.tx_id, 4)
+        transaction.wait_for_confirmation(self.algod_client, result.tx_id, 2)
         return True
     
     def verify_attestation(self, attestation_id: str) -> Attestation | None:
