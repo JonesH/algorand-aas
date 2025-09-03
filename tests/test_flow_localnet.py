@@ -266,6 +266,115 @@ def test_create_schema_box_storage(deployed_client: ApplicationClient, algod_cli
     assert stored_uri == expected_uri
 
 
+@pytest.mark.localnet
+def test_grant_attester_only_owner(deployed_client: ApplicationClient, algod_client: AlgodClient, localnet_signer: tuple[AccountTransactionSigner, str]) -> None:
+    """Only schema owner can grant attester."""
+    signer, owner_addr = localnet_signer
+
+    # Create schema with owner = owner_addr
+    schema_id = b"owner_only_schema"
+    uri = "https://example.com/schema.json"
+    flags = 1
+    schema_box = (deployed_client.app_id, b"schema:" + schema_id)
+    att_box = (deployed_client.app_id, b"attesters:" + schema_id)
+
+    res = deployed_client.call(
+        AASApplication.create_schema,
+        schema_id=schema_id,
+        owner=owner_addr,
+        uri=uri,
+        flags=flags,
+        boxes=[schema_box],
+        signer=signer,
+    )
+    transaction.wait_for_confirmation(algod_client, res.tx_id, 4)
+
+    # Prepare an attester key (32 bytes)
+    attester_pk = b"A" * 32
+
+    # Owner can grant
+    res2 = deployed_client.call(
+        AASApplication.grant_attester,
+        schema_id=schema_id,
+        attester_pk=attester_pk,
+        boxes=[schema_box, att_box],
+        signer=signer,
+    )
+    transaction.wait_for_confirmation(algod_client, res2.tx_id, 4)
+
+    # Non-owner should be denied
+    # Create another ephemeral signer
+    from algosdk.kmd import KMDClient
+    kmd = KMDClient(
+        "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "http://localhost:4002",
+    )
+    wallet = next((w for w in kmd.list_wallets() if w["name"] == "unencrypted-default-wallet"), None)
+    assert wallet, "LocalNet wallet missing"
+    handle = kmd.init_wallet_handle(wallet["id"], "")
+    try:
+        addrs = kmd.list_keys(handle)
+        richest = max(addrs, key=lambda a: algod_client.account_info(a)["amount"])  # type: ignore[index]
+        funder_sk = kmd.export_key(handle, "", richest)
+        ep_sk, ep_addr = account.generate_account()
+        sp = algod_client.suggested_params()
+        txid = algod_client.send_transaction(transaction.PaymentTxn(richest, sp, ep_addr, 2_000_000).sign(funder_sk))
+        transaction.wait_for_confirmation(algod_client, txid, 4)
+        other_signer = AccountTransactionSigner(ep_sk)
+
+        with pytest.raises(Exception):
+            deployed_client.call(
+                AASApplication.grant_attester,
+                schema_id=schema_id,
+                attester_pk=b"B" * 32,
+                boxes=[schema_box, att_box],
+                signer=other_signer,
+                sender=ep_addr,
+            )
+    finally:
+        kmd.release_wallet_handle(handle)
+
+
+@pytest.mark.localnet
+def test_grant_attester_idempotent(deployed_client: ApplicationClient, algod_client: AlgodClient, localnet_signer: tuple[AccountTransactionSigner, str]) -> None:
+    """grant_attester should be idempotent for the same key."""
+    signer, owner_addr = localnet_signer
+    schema_id = b"idempotent_schema"
+    uri = "u"
+    flags = 0
+    schema_box = (deployed_client.app_id, b"schema:" + schema_id)
+    att_box = (deployed_client.app_id, b"attesters:" + schema_id)
+
+    res = deployed_client.call(
+        AASApplication.create_schema,
+        schema_id=schema_id,
+        owner=owner_addr,
+        uri=uri,
+        flags=flags,
+        boxes=[schema_box],
+        signer=signer,
+    )
+    transaction.wait_for_confirmation(algod_client, res.tx_id, 4)
+
+    attester_pk = b"Z" * 32
+    for _ in range(2):
+        r = deployed_client.call(
+            AASApplication.grant_attester,
+            schema_id=schema_id,
+            attester_pk=attester_pk,
+            boxes=[schema_box, att_box],
+            signer=signer,
+        )
+        transaction.wait_for_confirmation(algod_client, r.tx_id, 4)
+
+    # Verify only one 32B entry exists
+    import base64
+    data_b64 = algod_client.application_box_by_name(deployed_client.app_id, b"attesters:" + schema_id)["value"]
+    raw = base64.b64decode(data_b64)
+    assert len(raw) == 32
+    assert raw == attester_pk
+
+
 @pytest.mark.localnet  
 def test_full_attestation_flow() -> None:
     """Test complete attestation flow on LocalNet.
