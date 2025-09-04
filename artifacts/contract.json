@@ -1,0 +1,103 @@
+{
+    "name": "AASApplication",
+    "methods": [
+        {
+            "name": "create_schema",
+            "args": [
+                {
+                    "type": "byte[]",
+                    "name": "schema_id"
+                },
+                {
+                    "type": "address",
+                    "name": "owner"
+                },
+                {
+                    "type": "string",
+                    "name": "uri"
+                },
+                {
+                    "type": "uint64",
+                    "name": "flags"
+                }
+            ],
+            "returns": {
+                "type": "void"
+            },
+            "desc": "Create new schema in registry."
+        },
+        {
+            "name": "grant_attester",
+            "args": [
+                {
+                    "type": "byte[]",
+                    "name": "schema_id"
+                },
+                {
+                    "type": "byte[]",
+                    "name": "attester_pk"
+                }
+            ],
+            "returns": {
+                "type": "void"
+            },
+            "desc": "Grant attester for a schema (idempotent).\n- Only schema owner may grant - Stores 32-byte attester keys concatenated in box: attesters:<schema_id>"
+        },
+        {
+            "name": "attest",
+            "args": [
+                {
+                    "type": "byte[]",
+                    "name": "schema_id"
+                },
+                {
+                    "type": "address",
+                    "name": "subject_addr"
+                },
+                {
+                    "type": "byte[]",
+                    "name": "claim_hash_32"
+                },
+                {
+                    "type": "byte[]",
+                    "name": "nonce_32"
+                },
+                {
+                    "type": "byte[]",
+                    "name": "sig_64"
+                },
+                {
+                    "type": "string",
+                    "name": "cid"
+                },
+                {
+                    "type": "byte[]",
+                    "name": "attester_pk"
+                }
+            ],
+            "returns": {
+                "type": "void"
+            },
+            "desc": "Create attestation with signature verification.\nVerifies ed25519 signature from authorized attester. Stores attestation in att:<att_id> box."
+        },
+        {
+            "name": "revoke",
+            "args": [
+                {
+                    "type": "byte[]",
+                    "name": "att_id"
+                },
+                {
+                    "type": "uint64",
+                    "name": "reason"
+                }
+            ],
+            "returns": {
+                "type": "void"
+            },
+            "desc": "Revoke existing attestation.\nAuthorization: only the attestation subject may revoke. Subject address is stored in the attestation box value."
+        }
+    ],
+    "networks": {},
+    "desc": "AAS Application with Schema Registry functionality."
+}
