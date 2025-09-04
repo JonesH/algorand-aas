@@ -111,6 +111,61 @@ scripts/lmstudio_run.sh \
 
 # Or run the bundled example end-to-end
 scripts/lmstudio_example.sh
+
+## Demo Video (web) — makedemo
+
+Generate a narrated 4‑minute web demo that clicks through the local walkthrough page.
+
+Prereqs: Node.js 20+, ffmpeg, OpenAI + ElevenLabs keys.
+
+Steps:
+
+1) Start the local web server (serves repo at http://localhost:8787)
+
+```bash
+scripts/mkdemo_server.sh
+```
+
+2) Configure API keys
+
+```bash
+cp .env.mkdemo.example .env.mkdemo
+# edit .env.mkdemo with your keys
+```
+
+3) Render the video
+
+```bash
+scripts/mkdemo_run.sh
+# Optional: DEMO_URL, OUT_DIR, INTERACTIONS, HEADLESS env vars
+```
+
+See docs/DEMO.md for details.
+
+## Demo Video (terminal) — asciinema + agg
+
+Record a live terminal demo and generate narrated video via the AAS CLI.
+
+```bash
+# 1) Check dependencies
+uv run aas demo check-deps
+
+# 2) Propose/edit narration
+uv run aas demo propose-script --out narration.txt
+
+# 3) Record terminal (press Ctrl-D to stop)
+uv run aas demo record --cast demo.cast
+
+# 4) Render + voice + merge
+uv run aas demo render --cast demo.cast --mp4 demo.mp4
+uv run aas demo voice --script narration.txt --mp3 narration.mp3  # needs ELEVENLABS_API_KEY
+uv run aas demo merge --mp4 demo.mp4 --mp3 narration.mp3 --out demo_with_voice.mp4
+
+# Or run it end-to-end
+uv run aas demo all
+```
+
+See docs/DEMO_CLI.md for more.
 ```
 
 ## Application Specification Generation

@@ -1,0 +1,116 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Algorand Attestation Service (AAS) — 4‑min Demo</title>
+    <style>
+      body { font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; margin: 0; color: #111; }
+      header { background: #0b5fff; color: #fff; padding: 24px; }
+      main { max-width: 920px; margin: 0 auto; padding: 24px; }
+      h1 { margin: 0 0 8px; font-size: 28px; }
+      h2 { margin-top: 32px; }
+      .grid { display: grid; grid-template-columns: 1fr; gap: 16px; }
+      .card { border: 1px solid #e6e8eb; border-radius: 8px; padding: 16px; }
+      .steps a { display: inline-block; margin-right: 12px; text-decoration: none; color: #0b5fff; }
+      code, pre { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+      pre { background: #0f172a; color: #e2e8f0; padding: 12px; border-radius: 8px; overflow: auto; }
+      .note { color: #475569; font-size: 14px; }
+      .ok { color: #0f766e; }
+      .warn { color: #a16207; }
+      .cta { display: inline-block; background:#0b5fff; color:#fff; padding: 10px 14px; border-radius: 6px; text-decoration:none; }
+      ul { padding-left: 18px; }
+    </style>
+  </head>
+  <body>
+    <header>
+      <h1>Algorand Attestation Service (AAS)</h1>
+      <div>Schema Registry + Attestation Writer with AI provenance</div>
+    </header>
+    <main>
+      <div class="grid">
+        <section id="intro" class="card">
+          <h2>What you’ll see (≈4 minutes)</h2>
+          <ul>
+            <li>Canonicalize an AI inference run into a claim</li>
+            <li>Anchor a salted hash on Algorand via AAS</li>
+            <li>Verify attestation status and retrieve details</li>
+          </ul>
+          <div class="steps">
+            <a href="#setup">1. Setup</a>
+            <a href="#ai-demo">2. AI Canonicalization</a>
+            <a href="#attest">3. Attest</a>
+            <a href="#verify">4. Verify</a>
+          </div>
+        </section>
+
+        <section id="setup" class="card">
+          <h2>1) Setup</h2>
+          <p class="note">Prereqs: Python 3.12+, uv, AlgoKit LocalNet (for full flow), LM Studio (optional for local model output)</p>
+          <pre><code># Install CLI
+uv pip install -e .
+
+# Set env for LocalNet (example)
+export AAS_ALGOD_URL=http://localhost:4001
+export AAS_ALGOD_TOKEN=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+export AAS_APP_ID=123456
+export AAS_MNEMONIC="your 25 words ..."
+
+# (Optional) Run included LM Studio example
+scripts/lmstudio_example.sh</code></pre>
+        </section>
+
+        <section id="ai-demo" class="card">
+          <h2>2) Canonicalize AI inference</h2>
+          <p>Turn prompt + params + output into a deterministic <code>ai.inference.v1</code> claim.</p>
+          <pre><code># Using the CLI
+uv run aas ai canonicalize \
+  --prompt examples/selfrun_gemma270m/prompt.txt \
+  --params examples/selfrun_gemma270m/params.json \
+  --output examples/selfrun_gemma270m/output.txt \
+  --out examples/selfrun_gemma270m/claim.json
+
+# Or run and canonicalize via LM Studio
+scripts/lmstudio_run.sh \
+  --prompt examples/selfrun_gemma270m/prompt.txt \
+  --params examples/selfrun_gemma270m/params.json \
+  --out-dir examples/selfrun_gemma270m \
+  --attester demo-user</code></pre>
+          <p class="ok">Outputs: <code>claim.json</code> with canonical fields and stable hash.</p>
+        </section>
+
+        <section id="attest" class="card">
+          <h2>3) Create an attestation</h2>
+          <p>Anchor a salted hash of the claim on Algorand via the AAS smart contract.</p>
+          <pre><code># Demo mode (placeholder signature)
+uv run aas ai attest \
+  --schema ai.inference.v1 \
+  --claim examples/selfrun_gemma270m/claim.json</code></pre>
+          <p class="note">Production use: sign the canonical message off-chain with Ed25519 and pass real signature + attester key.</p>
+        </section>
+
+        <section id="verify" class="card">
+          <h2>4) Verify and read back</h2>
+          <p>Query attestation and check status.</p>
+          <pre><code># Lookup by Attestation ID (from the previous step)
+uv run aas get &lt;attestation_id_hex&gt;
+
+# (Optional) read the underlying box data for debugging
+uv run python scripts/read_box.py $AAS_APP_ID &lt;attestation_id_hex&gt;</code></pre>
+          <p class="ok">Result: Active attestation with subject, schema id, and CID/URI stored on-chain.</p>
+        </section>
+
+        <section id="links" class="card">
+          <h2>Links</h2>
+          <ul>
+            <li><a href="../README.md">Project README (repo root)</a></li>
+            <li><a href="../QUICKSTART.md">Quickstart</a></li>
+            <li><a href="../examples/selfrun_gemma270m/">Example: Gemma 3 270M</a></li>
+          </ul>
+          <a class="cta" href="#intro">Back to top</a>
+        </section>
+      </div>
+    </main>
+  </body>
+  </html>
+
