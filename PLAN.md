@@ -5,6 +5,37 @@ Here’s a copy-paste prompt for Claude Code to build our AAS (Algorand Attestat
 Role & Goal
 You are an expert Algorand/Beaker/PyTeal full-stack engineer. Build a minimal, production-grade Algorand Attestation Service (AAS) inspired by EAS: a Schema Registry + Attestation Writer on Algorand AVM with a Python SDK and CLI. Deliver it in small steps; each step must compile, start, and pass tests before adding functionality.
 
+## Current Project Status (2025-09-04)
+
+**🎯 PRODUCTION READY**: Core attestation service complete with comprehensive testing and documentation.
+
+### Recently Completed (Latest Work)
+- **ARC-32 Application Specification Generation**: Standards-compliant app specs for frontend integration
+  - Standalone generation script using Beaker's `application_spec()` method  
+  - Integrated with deployment workflow for auto-generation with app IDs
+  - Multiple output formats: JSON spec, TEAL programs, ABI contract, artifacts
+  - Complete documentation and frontend integration examples
+
+### Capabilities Delivered
+- ✅ **Schema Registry**: Dynamic schema creation and management with box storage
+- ✅ **Attester Management**: Permission system with Ed25519 public key authorization  
+- ✅ **Attestation Writing**: Cryptographically verified attestations with signature validation
+- ✅ **Revocation System**: Subject-controlled attestation revocation with reason codes
+- ✅ **AI Provenance**: Complete AI inference attestation with canonical claim hashing
+- ✅ **Type-Safe SDK**: Pydantic models with full Python type safety
+- ✅ **Rich CLI**: Typer-based interface with comprehensive command coverage
+- ✅ **Standards Compliance**: ARC-32 application specifications for ecosystem integration
+- ✅ **Production Testing**: Comprehensive test suite including LocalNet integration tests
+
+### Architecture Highlights
+- **Smart Contract**: PyTeal + Beaker with box storage, Ed25519 verification, minimal on-chain PII
+- **Deterministic IDs**: Canonical JSON hashing for reproducible attestation/schema IDs
+- **Privacy-First**: Off-chain claim storage with on-chain anchoring via content addressing
+- **AI Integration**: Specialized workflows for AI model inference attestation and provenance
+
+### Ready for Extension
+The codebase is well-architected for the planned **Step 9: W3C Verifiable Credentials Integration** with standards-compliant DID support (did:key/did:web) and JWT VC format for broad ecosystem interoperability.
+
 Stack
 	•	Smart contracts: PyTeal + Beaker Router (Algorand AVM, Boxes, ARC-4).
 	•	SDK/CLI/tests: Python 3.11+, pytest, mypy, pynacl (ed25519), algosdk, beaker.
@@ -68,6 +99,12 @@ ruff check .
 
 
 ⸻
+
+## Implementation Status
+
+**✅ Steps 1-8.5 Complete**: Full attestation service with AI provenance, ARC-32 specification generation, and blockchain transaction support implemented.
+
+**📋 Step 9 Planned**: W3C Verifiable Credentials integration with standards-compliant DID support.
 
 Build plan (strict TDD). Each step must: write failing tests → implement → make tests green → commit.
 
@@ -137,6 +174,153 @@ Step 7 — Polish & docs
 
 Deliver: README with quickstart, env vars, commands, and Explorer links.
 Optional: MCP wrapper aas.* tools for Mini-App or Agent.
+
+Step 8 — AI Provenance ✅ COMPLETE
+
+Deliver: Enhanced AAS with AI inference attestation capabilities.
+- AI inference schema (ai.inference.v1) for canonical claims
+- CLI commands for canonicalization and attestation of AI runs  
+- Working example with Gemma 3 270M model
+- Complete workflow from prompt/params → output → attestation
+Implementation: All delivered with comprehensive tests and documentation.
+
+Step 8.5 — ARC-32 Application Specification ✅ COMPLETE
+
+Deliver: Standards-compliant application specifications for frontend integration.
+- Standalone spec generation script using Beaker's application_spec() method
+- Integration with deployment workflow for auto-generation with app IDs
+- Multiple output formats: ARC-32 JSON, TEAL programs, ABI contract, application artifacts
+- Complete documentation with frontend integration examples
+- All 4 contract methods (create_schema, grant_attester, attest, revoke) properly documented
+Files: aas/scripts/generate_spec.py, updated deploy.py, enhanced README.md
+Benefits: Enables frontend dApp integration, AlgoKit client generation, block explorer compatibility
+
+Step 9 — W3C Verifiable Credentials Integration (PLANNED)
+
+Deliver: Standards-compliant W3C VC integration with AAS for interoperable credential ecosystems.
+
+Architecture (Revised Based on Viability Analysis):
+- **DID Support**: did:key (Ed25519, immediate interop) + did:web (institutional, key rotation)
+- **NO custom did:algorand**: Defer to Phase 2 R&D (requires method spec + resolver ecosystem)
+- **JWT Verifiable Credentials**: W3C VC 2.0 compliant using JWS EdDSA with Ed25519
+- **Hybrid Storage**: Full VCs off-chain, only salted canonical hashes in AAS boxes
+- **Privacy-First**: Non-deterministic salting, zero PII on-chain, correlation prevention
+- **Status Management**: credentialStatus pointing to AAS attestation IDs (Active/Revoked)
+
+Key Design Decisions:
+- Standards over innovation: Use proven did:key/did:web for broad interoperability
+- Privacy by design: Salted anchoring prevents correlation, maintains verifier privacy
+- JWT format: Maximum tooling support over JSON-LD complexity
+- Backwards compatibility: Deterministic mapping from AAS attestations → VCs
+
+Implementation Plan:
+1. **DID Support** (aas/sdk/did.py)
+   - did:key generation and local resolution
+   - did:web scaffolding (.well-known/did.json creation)
+   - Ed25519 key management integrated with AAS cryptography
+
+2. **VC Module** (aas/sdk/vc.py)  
+   - JWT VC issuance from canonical claims with Ed25519 signing
+   - Salted anchor computation and AAS attestation submission
+   - VC verification: JWS validation + AAS status checking
+   - credentialSubject mapping from AAS claim JSON
+
+3. **Enhanced AI Provenance**
+   - Map AI inference canonical claims to VC credentialSubject
+   - credentialSchema references to AAS ai.inference.v1 schema
+   - evidence/relatedResource pointing to AAS attestation ID
+   - Rich off-chain metadata with PII-free on-chain anchoring
+
+4. **CLI Extensions** (aas/cli/vc_commands.py, aas/cli/did_commands.py)
+   - aas vc issue/verify/revoke commands
+   - aas did keygen (did:key) and did web-init commands  
+   - Integration with existing schema and attestation workflows
+   - Backwards compatibility with AAS-only workflows
+
+5. **Testing & Documentation**
+   - Interoperability tests with standard VC/JWT libraries (jose, pyld)
+   - W3C VC 2.0 compliance verification
+   - Migration guide from AAS attestation JSON to VC format
+   - Privacy guidance and correlation prevention best practices
+
+Benefits:
+- **Immediate Interoperability**: Works with existing VC ecosystems and tooling
+- **Privacy-Preserving**: Off-chain PII, salted anchoring, no correlation vectors
+- **Standards Compliant**: W3C VC 2.0 and proven DID methods (did:key/did:web)
+- **Algorand Advantages**: Cost-effective anchoring, tamper-proof status management
+- **Future-Ready**: Architecture supports StatusList2021 and advanced features
+
+Risk Mitigations:
+- Avoid custom DID method complexity through proven standards
+- Prevent correlation through proper salting and privacy documentation
+- Ensure broad tooling support via JWT VC format over JSON-LD
+- Maintain backwards compatibility with existing AAS workflows
+
+Files to Create:
+- aas/sdk/vc.py (JWT VC issuance, verification, anchoring)
+- aas/sdk/did.py (did:key generation, did:web utilities)  
+- aas/cli/vc_commands.py (VC CLI commands)
+- aas/cli/did_commands.py (DID CLI commands)
+- Enhanced AI VC schemas and working examples
+- Comprehensive interoperability tests and documentation
+
+⸻
+
+## Architecture Evolution & Key Decisions
+
+### Project Progression
+**Phase 1 (Steps 1-7)**: Core attestation infrastructure with schema registry, attester management, ed25519 verification, and CLI/SDK.
+
+**Phase 2 (Step 8)**: AI provenance with canonical claim hashing, JSON schema validation, and complete AI inference attestation workflows.
+
+**Phase 2.5 (Step 8.5)**: Standards compliance through ARC-32 application specification generation for ecosystem integration.
+
+**Phase 3 (Step 9)**: W3C standards integration for broader interoperability while maintaining Algorand's unique advantages.
+
+### Critical Design Decisions
+
+**1. Box Storage Over Global State**
+- Rationale: Dynamic schema/attestation content exceeds global state limits
+- Implementation: `schema:<id>`, `attesters:<id>`, `att:<id>` box keys
+- Benefits: Unlimited storage, deterministic access patterns, efficient querying
+
+**2. Canonical JSON Hashing for Determinism**  
+- Rationale: Consistent ID generation across implementations and languages
+- Implementation: Stable field ordering, no whitespace, UTF-8 encoding
+- Benefits: Reproducible attestation IDs, cross-client compatibility
+
+**3. Ed25519 Signatures Over Algorand Keys**
+- Rationale: Broader ecosystem support, proven cryptography, smaller signatures  
+- Implementation: pynacl for signing, Ed25519Verify_Bare in PyTeal
+- Benefits: 64-byte signatures, fast verification, widespread tooling
+
+**4. Off-Chain PII with On-Chain Anchoring**
+- Rationale: Privacy, cost efficiency, regulatory compliance
+- Implementation: Only hashes/addresses on-chain, full claims via CID references
+- Benefits: Minimal storage cost, privacy preservation, regulatory flexibility
+
+**5. Standards Compliance Over Custom Innovation (Step 9 Revision)**
+- Rationale: Interoperability trumps novel features for ecosystem adoption
+- Implementation: did:key/did:web instead of did:algorand, JWT VC over proprietary formats
+- Benefits: Immediate tooling support, proven security models, broad adoption potential
+
+**6. Hybrid Storage Architecture for VCs**
+- Rationale: Balance privacy, cost, and verifiability requirements
+- Implementation: Salted hashes on-chain, full VCs off-chain, non-deterministic salting
+- Benefits: Privacy preservation, cost efficiency, tamper detection, correlation prevention
+
+### Technical Constraints Addressed
+
+**Algorand Box Limitations**: 32KB max size → chunked storage patterns for large data
+**AVM Opcode Budget**: Ed25519 verification → OpUp budget management  
+**Deterministic Execution**: No randomness → client-side nonce generation
+**Global State Limits**: 64 key-value pairs → box storage for dynamic content
+
+### Privacy Model Evolution
+
+**Step 1-7**: Basic privacy through off-chain claims storage
+**Step 8**: Enhanced with canonical hashing and schema validation  
+**Step 9**: Full privacy model with salted anchoring and correlation prevention
 
 ⸻
 
