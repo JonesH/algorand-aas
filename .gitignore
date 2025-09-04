@@ -106,3 +106,4 @@ worktrees/
 # Test/development temporary files
 *.smoke.json
 *_tests.txt
+demos_output/

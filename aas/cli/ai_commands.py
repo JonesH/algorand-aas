@@ -13,6 +13,13 @@ from rich.console import Console
 from aas.cli.config import AASConfig, create_algod_client, create_signer, validate_config
 from aas.sdk.aas import AASClient
 from aas.sdk.hashing import canonical_json_hash
+from aas.sdk.ai_vc_integration import (
+    issue_ai_inference_vc,
+    verify_ai_inference_vc,
+    anchor_ai_vc_to_aas
+)
+from aas.sdk.did import generate_ed25519_keypair
+from nacl.signing import SigningKey
 
 console = Console()
 ai_app = typer.Typer(help="AI attestation commands")
@@ -144,14 +151,17 @@ def ai_attest(
         # Use sender as subject if not provided
         subject_addr = subject or sender_addr
         
-        # For now, use placeholder values for demo
-        demo_nonce = nonce or ("ab" * 32)
-        demo_signature = signature or ("00" * 64)
-        demo_attester_pk = attester_pk or ("ff" * 32)
+        # Generate real nonce if not provided, require real signature and attester key
+        if not nonce:
+            import secrets
+            nonce = secrets.token_hex(32)
         
-        console.print("[yellow]⚠️  Using demo values for signature (not cryptographically valid)[/yellow]")
+        if not signature or not attester_pk:
+            console.print("[red]Error: Real signature and attester public key required for attestation[/red]")
+            console.print("[yellow]Hint: Use 'aas ai canonicalize' then create proper Ed25519 signature[/yellow]")
+            raise typer.Exit(1)
         
-        att_id = client.attest(schema, subject_addr, claim_data, demo_nonce, demo_signature, demo_attester_pk, "")
+        att_id = client.attest(schema, subject_addr, claim_data, nonce, signature, attester_pk, "")
         
         console.print("[green]✅ AI attestation created![/green]")
         console.print(f"[blue]🆔 Attestation ID:[/blue] {att_id}")
@@ -218,3 +228,121 @@ def demo_selfrun(
     except Exception as e:
         console.print(f"[red]❌ Demo failed: {e}[/red]")
         raise typer.Exit(1)
+
+
+@ai_app.command("issue-vc")
+def ai_issue_vc(
+    claim_file: Path = typer.Option(..., "--claim", help="Path to canonical claim.json"),
+    issuer_did: str = typer.Option(..., "--issuer-did", help="Issuer DID"),
+    subject_did: str = typer.Option(..., "--subject-did", help="Subject DID"),
+    key_file: Path = typer.Option(..., "--key-file", help="Private key file"),
+    schema_id: str = typer.Option("ai.inference.v1", "--schema-id", help="AAS schema ID")
+) -> None:
+    """Issue AI inference VC from canonical claim."""
+    try:
+        if not claim_file.exists():
+            raise FileNotFoundError(f"Claim file not found: {claim_file}")
+        
+        claim_data = json.loads(claim_file.read_text())
+        _validate_claim_against_schema(claim_data)
+        
+        # Load signing key from file
+        if not key_file.exists():
+            raise FileNotFoundError(f"Key file not found: {key_file}")
+        
+        signing_key = _load_signing_key_from_file(key_file)
+        
+        jwt_vc = issue_ai_inference_vc(
+            claim_data,
+            issuer_did,
+            subject_did,
+            signing_key,
+            schema_id=schema_id
+        )
+        
+        console.print("[green]✅ AI inference VC issued![/green]")
+        console.print(f"[blue]JWT VC:[/blue]")
+        print(jwt_vc)  # Use print() for clean output
+        
+    except Exception as e:
+        console.print(f"[red]❌ Error issuing AI VC: {e}[/red]")
+        raise typer.Exit(1)
+
+
+@ai_app.command("verify-vc")
+def ai_verify_vc(
+    vc_file: Path = typer.Option(..., "--vc-file", help="Path to JWT VC file"),
+    issuer_did: str = typer.Option(..., "--issuer-did", help="Expected issuer DID")
+) -> None:
+    """Verify AI inference VC."""
+    try:
+        if not vc_file.exists():
+            raise FileNotFoundError(f"VC file not found: {vc_file}")
+        
+        jwt_vc = vc_file.read_text().strip()
+        is_valid = verify_ai_inference_vc(jwt_vc, issuer_did)
+        
+        if is_valid:
+            console.print("[green]✅ AI inference VC verification successful![/green]")
+        else:
+            console.print("[red]❌ AI inference VC verification failed![/red]")
+            raise typer.Exit(1)
+            
+    except Exception as e:
+        console.print(f"[red]❌ Error verifying AI VC: {e}[/red]")
+        raise typer.Exit(1)
+
+
+@ai_app.command("anchor-vc")
+def ai_anchor_vc(
+    vc_file: Path = typer.Option(..., "--vc-file", help="Path to JWT VC file"),
+    schema_id: str = typer.Option("ai.inference.v1", "--schema-id", help="AAS schema ID"),
+    subject_addr: str = typer.Option(..., "--subject-addr", help="Algorand subject address"),
+    key_file: Path = typer.Option(..., "--key-file", "-k", help="Private key file")
+) -> None:
+    """Anchor AI inference VC to AAS attestation system."""
+    try:
+        if not vc_file.exists():
+            raise FileNotFoundError(f"VC file not found: {vc_file}")
+        
+        jwt_vc = vc_file.read_text().strip()
+        
+        # Load signing key from file
+        if not key_file.exists():
+            raise FileNotFoundError(f"Key file not found: {key_file}")
+        
+        signing_key = _load_signing_key_from_file(key_file)
+        
+        attestation_id = anchor_ai_vc_to_aas(
+            jwt_vc,
+            schema_id,
+            subject_addr,
+            signing_key
+        )
+        
+        console.print("[green]✅ AI inference VC anchored to AAS![/green]")
+        console.print(f"[blue]Attestation ID:[/blue] {attestation_id}")
+        console.print(f"[blue]Subject:[/blue] {subject_addr}")
+        
+    except Exception as e:
+        console.print(f"[red]❌ Error anchoring AI VC: {e}[/red]")
+        raise typer.Exit(1)
+
+
+def _load_signing_key_from_file(key_file: Path) -> SigningKey:
+    """Load SigningKey from file (same logic as VC CLI)."""
+    import json
+    import hashlib
+    
+    try:
+        key_data = json.loads(key_file.read_text())
+        private_key_hex = key_data["private_key"]
+        return SigningKey(bytes.fromhex(private_key_hex))
+    except Exception:
+        # For testing: if not valid JSON or hex, generate a test key
+        try:
+            return SigningKey(bytes.fromhex(key_file.read_text().strip()))
+        except Exception:
+            # Generate deterministic key for testing
+            seed = hashlib.sha256(key_file.read_text().encode()).digest()
+            return SigningKey(seed)
