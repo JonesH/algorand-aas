@@ -22,6 +22,9 @@ dependencies = [
     "pydantic-settings",
     "rich",
     "setuptools>=80.9.0",
+    "pyjwt[crypto]>=2.10.0",
+    "py-multibase>=1.0.3",
+    "base58>=2.1.1",
 ]
 
 [project.optional-dependencies]

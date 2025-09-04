@@ -4,7 +4,7 @@ requires-python = ">=3.12"
 
 [[package]]
 name = "algokit"
-version = "2.8.0"
+version = "2.9.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "algokit-utils" },
@@ -17,6 +17,7 @@ dependencies = [
     { name = "mslex" },
     { name = "multiformats" },
     { name = "multiformats-config" },
+    { name = "prompt-toolkit" },
     { name = "pyclip" },
     { name = "pyjwt" },
     { name = "python-dotenv" },
@@ -26,7 +27,7 @@ dependencies = [
     { name = "textual" },
 ]
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/46/4f/c017308d168d0c4ec9079a8827258f6b9d88013797e2d38e2eebe46d90c8/algokit-2.8.0-py3-none-any.whl", hash = "sha256:63b881b73480f6676e957cfda22e600fbd6ead168738d85b2589ce6e44c521e0", size = 156109 },
+    { url = "https://files.pythonhosted.org/packages/8f/3d/81a186b932c741ebcf18168573c0f6f41988dca865251955703f0b2e2666/algokit-2.9.0-py3-none-any.whl", hash = "sha256:121e86c99cfae841676b381df8916a0e21198dbaf547495871a538b3f3b48903", size = 160419 },
 ]
 
 [[package]]
@@ -49,9 +50,12 @@ source = { editable = "." }
 dependencies = [
     { name = "algokit" },
     { name = "algosdk" },
+    { name = "base58" },
     { name = "beaker-pyteal" },
+    { name = "py-multibase" },
     { name = "pydantic" },
     { name = "pydantic-settings" },
+    { name = "pyjwt", extra = ["crypto"] },
     { name = "pynacl" },
     { name = "pyteal" },
     { name = "rich" },
@@ -77,11 +81,14 @@ dev = [
 requires-dist = [
     { name = "algokit", specifier = ">=2.8.0" },
     { name = "algosdk" },
+    { name = "base58", specifier = ">=2.1.1" },
     { name = "beaker-pyteal" },
     { name = "mypy", marker = "extra == 'dev'" },
     { name = "pre-commit", marker = "extra == 'dev'" },
+    { name = "py-multibase", specifier = ">=1.0.3" },
     { name = "pydantic", specifier = ">=2.0" },
     { name = "pydantic-settings" },
+    { name = "pyjwt", extras = ["crypto"], specifier = ">=2.10.0" },
     { name = "pynacl" },
     { name = "pyteal" },
     { name = "pytest", marker = "extra == 'dev'" },
@@ -151,6 +158,15 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/4a/e7/82da0a03e7ba5141f05cce0d302e6eed121ae055e0456ca228bf693984bc/asttokens-3.0.0.tar.gz", hash = "sha256:0dcd8baa8d62b0c1d118b399b2ddba3c4aff271d0d7a9e0d4c1681c79035bbc7", size = 61978 }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/25/8a/c46dcc25341b5bce5472c718902eb3d38600a903b14fa6aeecef3f21a46f/asttokens-3.0.0-py3-none-any.whl", hash = "sha256:e3078351a059199dd5138cb1c706e6430c05eff2ff136af5eb4790f9d28932e2", size = 26918 },
+]
+
+[[package]]
+name = "base58"
+version = "2.1.1"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/7f/45/8ae61209bb9015f516102fa559a2914178da1d5868428bd86a1b4421141d/base58-2.1.1.tar.gz", hash = "sha256:c5d0cb3f5b6e81e8e35da5754388ddcc6d0d14b6c6a132cb93d69ed580a7278c", size = 6528 }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/4a/45/ec96b29162a402fc4c1c5512d114d7b3787b9d1c2ec241d9568b4816ee23/base58-2.1.1-py3-none-any.whl", hash = "sha256:11a36f4d3ce51dfc1043f3218591ac4eb1ceb172919cebe05b52a5bcc8d245c2", size = 5621 },
 ]
 
 [[package]]
@@ -303,7 +319,7 @@ wheels = [
 
 [[package]]
 name = "copier"
-version = "9.7.1"
+version = "9.10.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "colorama" },
@@ -315,14 +331,15 @@ dependencies = [
     { name = "pathspec" },
     { name = "platformdirs" },
     { name = "plumbum" },
+    { name = "prompt-toolkit" },
     { name = "pydantic" },
     { name = "pygments" },
     { name = "pyyaml" },
     { name = "questionary" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/08/ac/4d8fc462d06dcd25d35b0e8983b5a7466d82a8d8fa50c17f616d1fa65ee8/copier-9.7.1.tar.gz", hash = "sha256:83da2cbe5e28a1593c649f5dac37d916774b07a3ba3ce66e6966a3e84e557885", size = 606482 }
+sdist = { url = "https://files.pythonhosted.org/packages/36/a5/0cf693f3fa51cba1d36765939e0d9956c0487426ad581868a2507c208bad/copier-9.10.1.tar.gz", hash = "sha256:ba2d729465508da04a62bc9b76eed13d952aa7634a74a69519252fcf8a54d94e", size = 586680 }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/83/df/36f3fa22894a3d74bc847732614f697f70b149c783b5a5020f45ed7a7ace/copier-9.7.1-py3-none-any.whl", hash = "sha256:89f2a3f3f9134af35a7d4e2aa63b6468dbff18d82c8369f995b126de9faf0f08", size = 54456 },
+    { url = "https://files.pythonhosted.org/packages/9b/4b/4a12d04124b0158b77958fb12349828bb4023f6530aaa1713ceb784c77a3/copier-9.10.1-py3-none-any.whl", hash = "sha256:8b1b406367c67e5ee389778246cea18cddd55e71bfc6503d5fa13fe73304407a", size = 56017 },
 ]
 
 [[package]]
@@ -824,6 +841,14 @@ wheels = [
 ]
 
 [[package]]
+name = "morphys"
+version = "1.0"
+source = { registry = "https://pypi.org/simple" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/f9/4f/cb781d0ac5d079adabc77dc4f0bc99fc81c390029bd33c6e70552139e762/morphys-1.0-py2.py3-none-any.whl", hash = "sha256:76d6dbaa4d65f597e59d332c81da786d83e4669387b9b2a750cfec74e7beec20", size = 5618 },
+]
+
+[[package]]
 name = "msgpack"
 version = "1.1.1"
 source = { registry = "https://pypi.org/simple" }
@@ -1039,14 +1064,14 @@ wheels = [
 
 [[package]]
 name = "prompt-toolkit"
-version = "3.0.52"
+version = "3.0.51"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "wcwidth" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/a1/96/06e01a7b38dce6fe1db213e061a4602dd6032a8a97ef6c1a862537732421/prompt_toolkit-3.0.52.tar.gz", hash = "sha256:28cde192929c8e7321de85de1ddbe736f1375148b02f2e17edd840042b1be855", size = 434198 }
+sdist = { url = "https://files.pythonhosted.org/packages/bb/6e/9d084c929dfe9e3bfe0c6a47e31f78a25c54627d64a66e884a8bf5474f1c/prompt_toolkit-3.0.51.tar.gz", hash = "sha256:931a162e3b27fc90c86f1b48bb1fb2c528c2761475e57c9c06de13311c7b54ed", size = 428940 }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/84/03/0d3ce49e2505ae70cf43bc5bb3033955d2fc9f932163e84dc0779cc47f48/prompt_toolkit-3.0.52-py3-none-any.whl", hash = "sha256:9aac639a3bbd33284347de5ad8d68ecc044b91a762dc39b7c21095fcd6a19955", size = 391431 },
+    { url = "https://files.pythonhosted.org/packages/ce/4f/5249960887b1fbe561d9ff265496d170b55a735b76724f10ef19f9e40716/prompt_toolkit-3.0.51-py3-none-any.whl", hash = "sha256:52742911fde84e2d423e2f9a4cf1de7d7ac4e51958f648d9540e0fb8db077b07", size = 387810 },
 ]
 
 [[package]]
@@ -1094,6 +1119,20 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/b8/82/b95a3ea52624ab019fdca9e3162db8c81d0ee76b717819079314f0bcd93a/py_algorand_sdk-2.10.0.tar.gz", hash = "sha256:521f997a53219210feac519e86d0fb36d18be7e36d528162cf328b4b058e423f", size = 90149 }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/46/52/465ec1c122d791df72d101fded83f1cf7f3e77ffe576d08e79241492acdf/py_algorand_sdk-2.10.0-py3-none-any.whl", hash = "sha256:511a8f172977b4d6940dceb036abb040d70f2ed2c7b090251818f0ba6f1b3af8", size = 113610 },
+]
+
+[[package]]
+name = "py-multibase"
+version = "1.0.3"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "morphys" },
+    { name = "python-baseconv" },
+    { name = "six" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/58/9c/8b1b78e900f5e94b1d48359efffcaa1ba9ddd0448e6aac94d4d27dbd67b7/py-multibase-1.0.3.tar.gz", hash = "sha256:d28a20efcbb61eec28f55827a0bf329c7cea80fffd933aecaea6ae8431267fe4", size = 23376 }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/78/21/7b6b3bba9c702daf6991f2bd89c92db6fa899a444fab24ba5b99f1f486f7/py_multibase-1.0.3-py2.py3-none-any.whl", hash = "sha256:2677c1fafcc0ae15ddb9c7f444c5becc2530b3889124fd4fa2959ddfefb8c15b", size = 6378 },
 ]
 
 [[package]]
@@ -1237,6 +1276,11 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/61/ad/689f02752eeec26aed679477e80e632ef1b682313be70793d798c1d5fc8f/PyJWT-2.10.1-py3-none-any.whl", hash = "sha256:dcdd193e30abefd5debf142f9adfcdd2b58004e644f25406ffaebd50bd98dacb", size = 22997 },
 ]
 
+[package.optional-dependencies]
+crypto = [
+    { name = "cryptography" },
+]
+
 [[package]]
 name = "pynacl"
 version = "1.5.0"
@@ -1299,6 +1343,12 @@ sdist = { url = "https://files.pythonhosted.org/packages/78/b4/439b179d1ff526791
 wheels = [
     { url = "https://files.pythonhosted.org/packages/ca/31/d4e37e9e550c2b92a9cbc2e4d0b7420a27224968580b5a447f420847c975/pytest_xdist-3.8.0-py3-none-any.whl", hash = "sha256:202ca578cfeb7370784a8c33d6d05bc6e13b4f25b5053c30a152269fd10f0b88", size = 46396 },
 ]
+
+[[package]]
+name = "python-baseconv"
+version = "1.2.2"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/33/d0/9297d7d8dd74767b4d5560d834b30b2fff17d39987c23ed8656f476e0d9b/python-baseconv-1.2.2.tar.gz", hash = "sha256:0539f8bd0464013b05ad62e0a1673f0ac9086c76b43ebf9f833053527cd9931b", size = 4929 }
 
 [[package]]
 name = "python-dateutil"
