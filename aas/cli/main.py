@@ -6,6 +6,7 @@ Main entrypoint for the AAS command-line interface.
 
 from __future__ import annotations
 
+import warnings
 import json
 from pathlib import Path
 
@@ -13,8 +14,18 @@ import typer
 from rich.console import Console
 
 from aas import __version__
+
+# Suppress noisy third-party deprecation warnings (e.g., pkg_resources via PyTeal)
+warnings.filterwarnings(
+    "ignore",
+    message="pkg_resources is deprecated as an API",
+    category=UserWarning,
+)
 from aas.cli.config import AASConfig, create_algod_client, create_signer, validate_config
 from aas.cli.ai_commands import ai_app
+from aas.cli.did_commands import app as did_app
+from aas.cli.vc_commands import app as vc_app
+from aas.cli.demo_cli import demo_app
 from aas.sdk.aas import AASClient
 
 
@@ -26,8 +37,11 @@ app = typer.Typer(
 )
 console = Console()
 
-# Add AI commands as subcommands
+# Add command groups as subcommands  
 app.add_typer(ai_app, name="ai", help="AI attestation commands")
+app.add_typer(did_app, name="did", help="DID key management commands")
+app.add_typer(vc_app, name="vc", help="Verifiable Credentials commands")
+app.add_typer(demo_app, name="demo", help="Demo video utilities")
 
 
 def version_callback(show_version: bool) -> None:
