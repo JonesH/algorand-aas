@@ -1,0 +1,31 @@
+{
+  "execution": {
+    "environment": {
+      "runtime": "LM Studio",
+      "version": "unknown"
+    },
+    "timestamp": "2025-09-04T06:50:25.319402+00:00"
+  },
+  "input": {
+    "parameters": {
+      "max_tokens": 160,
+      "seed": 42,
+      "temperature": 0.0,
+      "top_p": 1.0
+    },
+    "prompt": "In 2 sentences, explain why verifiable AI provenance matters for end users."
+  },
+  "model": {
+    "id": "google/gemma-3-270m-it",
+    "version": "gemma3-270m-it-qat-q4_0"
+  },
+  "output": {
+    "finish_reason": "stop",
+    "text": "Verifiable AI provenance provides transparency and accountability, allowing users to understand the origin and history of an AI's knowledge and decision-making process. This fosters trust and enables responsible use, promoting ethical AI development and mitigating potential risks associated with biased or inaccurate outputs."
+  },
+  "provenance": {
+    "attester": "demo-user",
+    "method": "self-run"
+  },
+  "schema_version": "ai.inference.v1"
+}

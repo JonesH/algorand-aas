@@ -14,6 +14,7 @@ from rich.console import Console
 
 from aas import __version__
 from aas.cli.config import AASConfig, create_algod_client, create_signer, validate_config
+from aas.cli.ai_commands import ai_app
 from aas.sdk.aas import AASClient
 
 
@@ -24,6 +25,9 @@ app = typer.Typer(
     rich_markup_mode="rich"
 )
 console = Console()
+
+# Add AI commands as subcommands
+app.add_typer(ai_app, name="ai", help="AI attestation commands")
 
 
 def version_callback(show_version: bool) -> None:

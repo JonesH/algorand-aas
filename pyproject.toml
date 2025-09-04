@@ -31,14 +31,13 @@ dev = ["pytest", "mypy", "ruff", "pre-commit"]
 aas = "aas.cli.main:app"
 
 [dependency-groups]
-dev = [
-    "pytest-xdist>=3.8.0",
-]
+dev = ["ipykernel", "pytest-xdist>=3.8.0"]
 
 [tool.pytest.ini_options]
 pythonpath = ["."]
 markers = [
     "localnet: marks tests as requiring AlgoKit LocalNet (deselect with '-m \"not localnet\"')",
+    "lmstudio: marks tests as requiring LM Studio running locally (deselect with '-m \"not lmstudio\"')",
 ]
 filterwarnings = ["ignore:pkg_resources is deprecated.*:UserWarning"]
 testpaths = ["tests"]

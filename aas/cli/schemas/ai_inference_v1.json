@@ -1,0 +1,148 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "title": "AI Inference Attestation v1",
+  "description": "Canonical schema for attesting AI model inference runs with provenance",
+  "properties": {
+    "schema_version": {
+      "type": "string",
+      "const": "ai.inference.v1",
+      "description": "Schema version identifier"
+    },
+    "model": {
+      "type": "object",
+      "description": "Model identification and metadata",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Model identifier (e.g., 'google/gemma-3-270m-it')"
+        },
+        "version": {
+          "type": "string", 
+          "description": "Specific model version or variant (e.g., 'gemma3-270m-it-qat-q4_0')"
+        },
+        "hash": {
+          "type": "string",
+          "pattern": "^[a-fA-F0-9]{64}$",
+          "description": "SHA256 hash of model weights (if available)"
+        }
+      },
+      "required": ["id", "version"]
+    },
+    "input": {
+      "type": "object",
+      "description": "Input prompt and parameters",
+      "properties": {
+        "prompt": {
+          "type": "string",
+          "description": "Input text prompt"
+        },
+        "parameters": {
+          "type": "object",
+          "description": "Inference parameters",
+          "properties": {
+            "temperature": {
+              "type": "number",
+              "minimum": 0.0,
+              "maximum": 2.0
+            },
+            "top_p": {
+              "type": "number", 
+              "minimum": 0.0,
+              "maximum": 1.0
+            },
+            "max_tokens": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "seed": {
+              "type": "integer"
+            }
+          },
+          "required": ["temperature", "max_tokens"]
+        }
+      },
+      "required": ["prompt", "parameters"]
+    },
+    "output": {
+      "type": "object",
+      "description": "Model output and metadata",
+      "properties": {
+        "text": {
+          "type": "string",
+          "description": "Generated text output"
+        },
+        "finish_reason": {
+          "type": "string",
+          "enum": ["stop", "length", "error"],
+          "description": "Reason inference completed"
+        },
+        "token_count": {
+          "type": "object",
+          "properties": {
+            "prompt": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "completion": {
+              "type": "integer", 
+              "minimum": 0
+            },
+            "total": {
+              "type": "integer",
+              "minimum": 0
+            }
+          }
+        }
+      },
+      "required": ["text"]
+    },
+    "execution": {
+      "type": "object",
+      "description": "Execution environment and timing",
+      "properties": {
+        "timestamp": {
+          "type": "string",
+          "format": "date-time",
+          "description": "ISO8601 timestamp when inference started"
+        },
+        "duration_ms": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Inference duration in milliseconds"
+        },
+        "environment": {
+          "type": "object",
+          "properties": {
+            "runtime": {
+              "type": "string",
+              "description": "Runtime environment (e.g., 'LM Studio', 'Ollama', 'Transformers')"
+            },
+            "version": {
+              "type": "string",
+              "description": "Runtime version"
+            }
+          }
+        }
+      },
+      "required": ["timestamp"]
+    },
+    "provenance": {
+      "type": "object",
+      "description": "Attestation provenance metadata",
+      "properties": {
+        "attester": {
+          "type": "string",
+          "description": "Entity that ran and attested the inference"
+        },
+        "method": {
+          "type": "string",
+          "enum": ["self-run", "delegated", "verified"],
+          "description": "How the inference was executed and verified"
+        }
+      },
+      "required": ["method"]
+    }
+  },
+  "required": ["schema_version", "model", "input", "output", "execution", "provenance"]
+}
