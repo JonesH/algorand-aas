@@ -70,7 +70,7 @@ def localnet_signer(
 
             # Create ephemeral account
             ep_sk, ep_addr = account.generate_account()
-
+            print(f"Ephemeral address: {ep_addr}")
             # Fund ephemeral (10 Algos for more headroom) and wait
             sp = algod_client.suggested_params()
             pay = transaction.PaymentTxn(richest, sp, ep_addr, 10_000_000)
@@ -96,8 +96,6 @@ def localnet_signer(
         pytest.skip(
             f"LocalNet KMD setup failed: {e}. Ensure LocalNet is running: 'algokit localnet start'"
         )
-
-
 
 
 @pytest.fixture
@@ -131,7 +129,7 @@ def deployed_client(
                 richest = max(addrs, key=lambda a: algod_client.account_info(a)["amount"])  # type: ignore[call-overload]
                 funder_sk = kmd.export_key(handle, "", richest)
                 sp = algod_client.suggested_params()
-                # 5 Algos should cover multiple box operations 
+                # 5 Algos should cover multiple box operations
                 pay = transaction.PaymentTxn(richest, sp, app_addr, 5_000_000)
                 txid = algod_client.send_transaction(pay.sign(funder_sk))
                 transaction.wait_for_confirmation(algod_client, txid, 2)
@@ -427,9 +425,15 @@ def test_attest_happy_path(
     localnet_signer: tuple[AccountTransactionSigner, str],
 ) -> None:
     """Test successful attestation with valid signature from authorized attester."""
-    from tests.helpers import create_schema_helper, grant_attester_helper, create_attestation_helper, parse_attestation_box
     from nacl.signing import SigningKey
-    
+
+    from tests.helpers import (
+        create_attestation_helper,
+        create_schema_helper,
+        grant_attester_helper,
+        parse_attestation_box,
+    )
+
     signer, owner_addr = localnet_signer
     schema_id = b"attest_test_schema"
 
@@ -447,18 +451,18 @@ def test_attest_happy_path(
     claim_hash = b"H" * 32
     nonce = b"N" * 32
     cid = "T"
-    
+
     att_id = create_attestation_helper(
         deployed_client, signer, schema_id, owner_addr, claim_hash, nonce, attester_sk, cid
     )
 
     # Verify attestation box using helper
     attestation_data = parse_attestation_box(algod_client, deployed_client.app_id, att_id)
-    
-    assert attestation_data['status'] == 'A'  # Status OK
-    assert attestation_data['subject_addr'] == owner_addr
-    assert attestation_data['schema_id'] == schema_id
-    assert attestation_data['cid'] == cid
+
+    assert attestation_data["status"] == "A"  # Status OK
+    assert attestation_data["subject_addr"] == owner_addr
+    assert attestation_data["schema_id"] == schema_id
+    assert attestation_data["cid"] == cid
 
 
 @pytest.mark.localnet
@@ -468,9 +472,14 @@ def test_attest_unauthorized_attester(
     localnet_signer: tuple[AccountTransactionSigner, str],
 ) -> None:
     """Test that unauthorized attester cannot create attestations."""
-    from tests.helpers import create_schema_helper, build_attestation_message, generate_attestation_id
     from nacl.signing import SigningKey
-    
+
+    from tests.helpers import (
+        build_attestation_message,
+        create_schema_helper,
+        generate_attestation_id,
+    )
+
     signer, owner_addr = localnet_signer
     schema_id = b"unauthorized_test"
 
@@ -678,11 +687,17 @@ def test_revoke_attestation_success(
     localnet_signer: tuple[AccountTransactionSigner, str],
 ) -> None:
     """Test successful attestation revocation."""
-    from tests.helpers import create_schema_helper, grant_attester_helper, create_attestation_helper, parse_attestation_box
     from nacl.signing import SigningKey
-    
+
+    from tests.helpers import (
+        create_attestation_helper,
+        create_schema_helper,
+        grant_attester_helper,
+        parse_attestation_box,
+    )
+
     signer, owner_addr = localnet_signer
-    schema_id = f"revoke_success_test_{id(signer)}".encode('utf-8')
+    schema_id = f"revoke_success_test_{id(signer)}".encode("utf-8")
 
     # Create schema using helper
     create_schema_helper(deployed_client, signer, schema_id, owner_addr)
@@ -698,14 +713,14 @@ def test_revoke_attestation_success(
     claim_hash = b"R" * 32
     nonce = b"V" * 32
     cid = "R"
-    
+
     att_id = create_attestation_helper(
         deployed_client, signer, schema_id, owner_addr, claim_hash, nonce, attester_sk, cid
     )
 
     # Verify attestation exists and is active using helper
     attestation_data = parse_attestation_box(algod_client, deployed_client.app_id, att_id)
-    assert attestation_data['status'] == 'A'  # Status OK
+    assert attestation_data["status"] == "A"  # Status OK
 
     # Revoke attestation
     reason = 42  # Revocation reason code
@@ -723,8 +738,8 @@ def test_revoke_attestation_success(
 
     # Verify attestation status changed and reason stored using helper
     revoked_data = parse_attestation_box(algod_client, deployed_client.app_id, att_id)
-    assert revoked_data['status'] == 'R'  # Status Revoked
-    assert revoked_data['reason'] == reason
+    assert revoked_data["status"] == "R"  # Status Revoked
+    assert revoked_data["reason"] == reason
 
 
 @pytest.mark.localnet
@@ -946,14 +961,17 @@ def test_revoke_nonexistent(
 
 
 @pytest.mark.localnet
-@pytest.mark.parametrize("param_name,invalid_length", [
-    ("attester_pk", 31),
-    ("attester_pk", 33), 
-    ("claim_hash", 31),
-    ("claim_hash", 33),
-    ("nonce", 31),
-    ("nonce", 33),
-])
+@pytest.mark.parametrize(
+    "param_name,invalid_length",
+    [
+        ("attester_pk", 31),
+        ("attester_pk", 33),
+        ("claim_hash", 31),
+        ("claim_hash", 33),
+        ("nonce", 31),
+        ("nonce", 33),
+    ],
+)
 def test_invalid_parameter_lengths(
     deployed_client: ApplicationClient,
     localnet_signer: tuple[AccountTransactionSigner, str],
@@ -961,33 +979,34 @@ def test_invalid_parameter_lengths(
     invalid_length: int,
 ) -> None:
     """Test that invalid parameter lengths are rejected."""
-    from tests.helpers import create_schema_helper, grant_attester_helper
     from nacl.signing import SigningKey
-    
+
+    from tests.helpers import create_schema_helper, grant_attester_helper
+
     signer, owner_addr = localnet_signer
-    schema_id = f"invalid_len_test_{id(signer)}_{param_name}_{invalid_length}".encode('utf-8')
-    
+    schema_id = f"invalid_len_test_{id(signer)}_{param_name}_{invalid_length}".encode("utf-8")
+
     # Create schema
     create_schema_helper(deployed_client, signer, schema_id, owner_addr)
-    
+
     # Test invalid lengths for different parameters
     if param_name == "attester_pk":
         # Test invalid attester_pk length in grant_attester
         invalid_attester_pk = b"X" * invalid_length
         with pytest.raises(Exception):
             grant_attester_helper(deployed_client, signer, schema_id, invalid_attester_pk)
-    
+
     elif param_name in ["claim_hash", "nonce"]:
         # Setup valid attester for attest tests
         attester_sk = SigningKey.generate()
         valid_attester_pk = bytes(attester_sk.verify_key)
         grant_attester_helper(deployed_client, signer, schema_id, valid_attester_pk)
-        
+
         # Prepare attest parameters
         subject_addr = owner_addr
         valid_claim_hash = b"H" * 32
         valid_nonce = b"N" * 32
-        
+
         # Create invalid parameter
         if param_name == "claim_hash":
             claim_hash = b"H" * invalid_length
@@ -995,18 +1014,19 @@ def test_invalid_parameter_lengths(
         else:  # nonce
             claim_hash = valid_claim_hash
             nonce = b"N" * invalid_length
-            
+
         # Build message and sign
         from tests.helpers import build_attestation_message, generate_attestation_id
+
         message = build_attestation_message(schema_id, subject_addr, claim_hash, nonce)
         signature = bytes(attester_sk.sign(message).signature)
         att_id = generate_attestation_id(schema_id, subject_addr, claim_hash, nonce)
-        
+
         # Prepare boxes
         schema_box = (deployed_client.app_id, b"schema:" + schema_id)
         att_box = (deployed_client.app_id, b"attesters:" + schema_id)
         att_storage_box = (deployed_client.app_id, b"att:" + att_id)
-        
+
         # Should fail with invalid length
         with pytest.raises(Exception):
             deployed_client.call(
@@ -1032,10 +1052,11 @@ def test_grant_attester_nonexistent_schema(
     signer, _ = localnet_signer
     nonexistent_schema_id = b"does_not_exist"
     attester_pk = b"A" * 32
-    
+
     # Should fail - schema doesn't exist
     with pytest.raises(Exception):
         from tests.helpers import grant_attester_helper
+
         grant_attester_helper(deployed_client, signer, nonexistent_schema_id, attester_pk)
 
 
@@ -1050,38 +1071,44 @@ def test_full_attestation_flow(
     This test requires AlgoKit LocalNet running:
     algokit localnet start
     """
-    from tests.helpers import create_schema_helper, grant_attester_helper, create_attestation_helper, parse_attestation_box
     from nacl.signing import SigningKey
-    
+
+    from tests.helpers import (
+        create_attestation_helper,
+        create_schema_helper,
+        grant_attester_helper,
+        parse_attestation_box,
+    )
+
     signer, owner_addr = localnet_signer
-    
+
     # 1. Contract is already deployed via deployed_client fixture
-    
+
     # 2. Create schema using helper
-    schema_id = f"full_flow_schema_{id(signer)}".encode('utf-8')
+    schema_id = f"full_flow_schema_{id(signer)}".encode("utf-8")
     create_schema_helper(deployed_client, signer, schema_id, owner_addr, "flow", 1)
-    
+
     # 3. Grant attester using helper
     attester_sk = SigningKey.generate()
     attester_pk = bytes(attester_sk.verify_key)
     grant_attester_helper(deployed_client, signer, schema_id, attester_pk)
-    
+
     # 4. Create attestation using helper
-    claim_hash = b"F" * 32  
-    nonce = b"L" * 32  
+    claim_hash = b"F" * 32
+    nonce = b"L" * 32
     cid = "F"
-    
+
     att_id = create_attestation_helper(
         deployed_client, signer, schema_id, owner_addr, claim_hash, nonce, attester_sk, cid
     )
-    
+
     # 5. Verify attestation using helper
     attestation_data = parse_attestation_box(algod_client, deployed_client.app_id, att_id)
-    assert attestation_data['status'] == 'A'  # Status OK
-    assert attestation_data['subject_addr'] == owner_addr
-    assert attestation_data['schema_id'] == schema_id
-    assert attestation_data['cid'] == cid
-    
+    assert attestation_data["status"] == "A"  # Status OK
+    assert attestation_data["subject_addr"] == owner_addr
+    assert attestation_data["schema_id"] == schema_id
+    assert attestation_data["cid"] == cid
+
     # 6. Revoke attestation
     reason = 123
     att_storage_box = (deployed_client.app_id, b"att:" + att_id)
@@ -1096,5 +1123,5 @@ def test_full_attestation_flow(
 
     # Verify revocation using helper
     revoked_data = parse_attestation_box(algod_client, deployed_client.app_id, att_id)
-    assert revoked_data['status'] == 'R'  # Status Revoked
-    assert revoked_data['reason'] == reason
+    assert revoked_data["status"] == "R"  # Status Revoked
+    assert revoked_data["reason"] == reason
